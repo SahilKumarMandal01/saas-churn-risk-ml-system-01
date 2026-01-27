@@ -42,7 +42,16 @@ DATA_INGESTION_METADATA_FILE_NAME: str = "metadata.json"
 DATA_INGESTION_TRAIN_TEMP_SPLIT_RATIO: float = 0.30
 DATA_INGESTION_TEST_VAL_SPLIT_RATIO: float = 0.50
 
-# Environment variables (validated at runtime, not import time)
 DATA_INGESTION_DATABASE_NAME: str | None = os.getenv("MONGODB_DATABASE")
 DATA_INGESTION_COLLECTION_NAME: str | None = os.getenv("MONGODB_COLLECTION")
 DATA_INGESTION_MONGODB_URL: str | None = os.getenv("MONGODB_URL")
+
+
+# -------------------------------------------------------------------------
+# Data Validation Constants
+# -------------------------------------------------------------------------
+
+DATA_VALIDATION_DIR_NAME: str = "03_data_validation"
+DATA_VALIDATION_REPORT_FILE_NAME: str = "report.json"
+
+DATA_VALIDATION_REFERENCE_SCHEMA: Path = Path("data_schema") / "schema.yaml"

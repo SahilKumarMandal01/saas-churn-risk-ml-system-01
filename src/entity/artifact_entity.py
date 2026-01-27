@@ -43,4 +43,24 @@ class DataIngestionArtifact:
             f"  metadata_file_path = {self.metadata_file_path}\n"
             ")"
         )
-    
+
+
+@dataclass(frozen=True)
+class DataValidationArtifact:
+    """
+    Artifact generated after the Data Validation stage.
+
+    Attributes:
+        validation_status (bool): Whether validation passed or failed
+        validation_report (str): Path to validation report
+    """
+    validation_status: bool
+    validation_report: str
+
+    def __str__(self) -> str:
+        return (
+            "\nDataValidationArtifact(\n"
+            f"  validation_status = {self.validation_status}\n"
+            f"  validation_report = {self.validation_report}\n"
+            ")"
+        )

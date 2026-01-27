@@ -88,3 +88,21 @@ class DataIngestionConfig:
             
         except Exception as e:
             raise CustomerChurnException(e, sys)
+        
+
+class DataValidationConfig:
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+        try:
+            self.data_validation_dir: str = os.path.join(
+            training_pipeline_config.artifact_dir,
+            training_pipeline.DATA_VALIDATION_DIR_NAME,
+            )
+            self.validation_report_file_path: str = os.path.join(
+                self.data_validation_dir,
+                training_pipeline.DATA_VALIDATION_REPORT_FILE_NAME
+            )
+            self.reference_schema_file_path = training_pipeline.DATA_VALIDATION_REFERENCE_SCHEMA
+
+        except Exception as e:
+            raise CustomerChurnException(e, sys)
+        
