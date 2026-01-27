@@ -64,3 +64,27 @@ class DataValidationArtifact:
             f"  validation_report = {self.validation_report}\n"
             ")"
         )
+
+
+@dataclass(frozen=True)
+class DataTransformationArtifact:
+    """
+    Artifact generated after the Data Transformation stage.
+
+    Attributes:
+        tree_preprocessor_file_path (str): Path to tree-based model preprocessor
+        linear_preprocessor_file_path (str): Path to linear model preprocessor
+        metadata_file_path (str): Path to transformation metadata
+    """
+    tree_preprocessor_file_path: str
+    linear_preprocessor_file_path: str
+    metadata_file_path: str
+
+    def __str__(self) -> str:
+        return (
+            "\nDataTransformationArtifact(\n"
+            f"  tree_preprocessor_file_path   = {self.tree_preprocessor_file_path}\n"
+            f"  linear_preprocessor_file_path = {self.linear_preprocessor_file_path}\n"
+            f"  metadata_file_path            = {self.metadata_file_path}\n"
+            ")"
+        )

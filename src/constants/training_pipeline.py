@@ -55,3 +55,16 @@ DATA_VALIDATION_DIR_NAME: str = "03_data_validation"
 DATA_VALIDATION_REPORT_FILE_NAME: str = "report.json"
 
 DATA_VALIDATION_REFERENCE_SCHEMA: Path = Path("data_schema") / "schema.yaml"
+
+
+# -------------------------------------------------------------------------
+# Data Transformation Constants
+# -------------------------------------------------------------------------
+
+DATA_TRANSFORMATION_DIR_NAME: str = "04_data_transformation"
+
+DATA_TRANSFORMATION_LINEAR_PREPROCESSOR_FILE_NAME: str = "lr_preprocessor.pkl"
+DATA_TRANSFORMATION_TREE_PREPROCESSOR_FILE_NAME: str = "tree_preprocessor.pkl"
+
+DATA_TRANSFORMATION_METADATA_FILE_NAME: str = "metadata.json"
+

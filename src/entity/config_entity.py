@@ -105,4 +105,27 @@ class DataValidationConfig:
 
         except Exception as e:
             raise CustomerChurnException(e, sys)
-        
+
+
+class DataTransformationConfig:
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+        try:
+            self.data_transformation_dir: str = os.path.join(
+                training_pipeline_config.artifact_dir,
+                training_pipeline.DATA_TRANSFORMATION_DIR_NAME
+            )
+            self.lr_preprocessor_file_path: str = os.path.join(
+                self.data_transformation_dir,
+                training_pipeline.DATA_TRANSFORMATION_LINEAR_PREPROCESSOR_FILE_NAME
+            )  
+            self.tree_preprocessor_file_path: str = os.path.join(
+                self.data_transformation_dir,
+                training_pipeline.DATA_TRANSFORMATION_TREE_PREPROCESSOR_FILE_NAME
+            )   
+            self.metadata_file_path: str = os.path.join(
+                self.data_transformation_dir,
+                training_pipeline.DATA_TRANSFORMATION_METADATA_FILE_NAME
+            )
+                    
+        except Exception as e:
+            raise CustomerChurnException(e, sys)
