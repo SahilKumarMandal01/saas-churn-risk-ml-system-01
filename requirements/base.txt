@@ -1,0 +1,7 @@
+# ========================
+# Core Numerical & Utils
+# ========================
+numpy==1.26.*
+pandas==2.1.*
+joblib==1.3.*
+scikit-learn==1.8.0

@@ -1,0 +1,19 @@
+# ========================
+# Base Dependencies
+# ========================
+-r base.txt
+
+# ========================
+# ML Runtime
+# ========================
+scikit-learn==1.8.0
+
+# ========================
+# API & Serving
+# ========================
+fastapi==0.110.*
+uvicorn[standard]==0.29.*
+python-multipart==0.0.9
+
+pydantic==2.6.*
+pydantic-settings==2.2.*
