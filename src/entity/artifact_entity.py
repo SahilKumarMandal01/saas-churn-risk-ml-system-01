@@ -88,3 +88,35 @@ class DataTransformationArtifact:
             f"  metadata_file_path            = {self.metadata_file_path}\n"
             ")"
         )
+
+
+@dataclass(frozen=True)
+class ModelTrainerArtifact:
+    trained_models_dir: str
+    metadata_file_path: str
+
+    def __str__(self) -> str:
+        return (
+            "\nModelTrainingArtifact(\n"
+            f"  trained_models_dir = {self.trained_models_dir}\n"
+            f"  metadata_file_path = {self.metadata_file_path}\n"
+            ")"
+        )
+
+
+@dataclass(frozen=True)
+class ModelEvaluationArtifact:
+    report_file_path: str
+    selected_trained_model_file_path: str
+    operating_threshold: float
+    metadata_file_path: str
+
+    def __str__(self) -> str:
+        return (
+            "\nModelEvaluationArtifact(\n"
+            f"  report_file_path                 = {self.report_file_path}\n"
+            f"  selected_trained_model_file_path = {self.selected_trained_model_file_path}\n"
+            f"  operating_threshold              = {self.operating_threshold}\n"
+            f"  metadata_file_path               = {self.metadata_file_path}\n"
+            ")"
+        )

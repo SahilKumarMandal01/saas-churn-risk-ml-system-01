@@ -1,10 +1,21 @@
+"""
+Centralized configuration constants for the ML training pipeline.
+
+This module defines directory names, file names, environment variables,
+and pipeline-wide constants used across different stages.
+"""
+
 from pathlib import Path
 import os
 import numpy as np
 from dotenv import load_dotenv
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+
 
 # Load environment variables once at module import
 load_dotenv()
+
 
 # -------------------------------------------------------------------------
 # Global Pipeline Constants
@@ -12,9 +23,10 @@ load_dotenv()
 
 TARGET_COLUMN: str = "Churn"
 ARTIFACT_DIR: Path = Path("artifacts")
-S3_BUCKET_NAME: str = "saas-customer-churn-ml"
+FINAL_MODEL_PATH: Path = Path("final_model") / "model.pkl"
+OPERATING_THRESHOLD_FILE_PATH: Path = Path("final_model") / "operating_threshold.json"
+TRAINING_BUCKET_NAME: str = "saas-customer-churn-ml"
 RANDOM_STATE = 42
-
 
 # -------------------------------------------------------------------------
 # ETL Constants
@@ -23,7 +35,6 @@ RANDOM_STATE = 42
 ETL_DIR_NAME: str = "01_etl"
 ETL_METADATA_FILE_NAME: str = "metadata.json"
 ETL_RAW_DATA_DIR_NAME: str = "raw_data"
-ETL_DELETE_OLD_DATA: bool = True
 
 
 # -------------------------------------------------------------------------
@@ -42,6 +53,8 @@ DATA_INGESTION_METADATA_FILE_NAME: str = "metadata.json"
 DATA_INGESTION_TRAIN_TEMP_SPLIT_RATIO: float = 0.30
 DATA_INGESTION_TEST_VAL_SPLIT_RATIO: float = 0.50
 
+
+# Environment variables (validated at runtime, not import time)
 DATA_INGESTION_DATABASE_NAME: str | None = os.getenv("MONGODB_DATABASE")
 DATA_INGESTION_COLLECTION_NAME: str | None = os.getenv("MONGODB_COLLECTION")
 DATA_INGESTION_MONGODB_URL: str | None = os.getenv("MONGODB_URL")
@@ -68,3 +81,56 @@ DATA_TRANSFORMATION_TREE_PREPROCESSOR_FILE_NAME: str = "tree_preprocessor.pkl"
 
 DATA_TRANSFORMATION_METADATA_FILE_NAME: str = "metadata.json"
 
+
+# -------------------------------------------------------------------------
+# Model Training Constants
+# -------------------------------------------------------------------------
+
+MODEL_TRAINING_DIR_NAME: str = "05_model_training"
+MODEL_TRAINING_TRAINED_MODELS_DIR_NAME: str = "trained_models"
+MODEL_TRAINING_METADATA_FILE_NAME: str = "metadata.json"
+MODEL_TRAINING_MODELS_REGISTERY: dict = {
+    "logistic_regression": LogisticRegression(random_state=RANDOM_STATE, n_jobs=-1),
+    "random_forest": RandomForestClassifier(random_state=RANDOM_STATE, n_jobs=-1),
+    "gradient_boosting": GradientBoostingClassifier(random_state=42)
+    }
+MODEL_TRAINING_MODELS_HYPERPARAMETERS = {
+    "logistic_regression": {
+        "C": [0.01, 0.1, 1.0, 10.0],
+        "penalty": ["l1", "l2"],
+        "max_iter": [100, 300, 500],
+        "solver": ["liblinear", "lbfgs", "saga"],
+    },
+    "random_forest": {
+        "n_estimators": [100, 300, 500],
+        "max_depth": [None, 10, 20, 30],
+        "min_samples_split": [2, 5, 10],
+        "min_samples_leaf": [1, 2, 4],
+        "bootstrap": [True, False],
+    },
+    "gradient_boosting": {
+        "n_estimators": [100, 300],
+        "learning_rate": [0.01, 0.05, 0.1],
+        "max_depth": [3, 5],
+        "subsample": [0.8, 1.0],
+    },   
+}
+MODEL_TRAINING_PRIMARY_METRIC = "recall"
+MODEL_TRAINING_DECISION_THRESHOLD = 0.5
+MODEL_TRAINING_N_ITER = 1
+
+
+# -------------------------------------------------------------------------
+# Model Evaluation Constants
+# -------------------------------------------------------------------------
+
+MODEL_EVALUATION_DIR_NAME: str = "06_model_evaluation"
+MODEL_EVALUATION_REPORT_FILE_NAME: str = "report.json"
+MODEL_EVALUATION_METADATA_FILE_NAME: str = "metadata.json"
+MODEL_EVALUATION_PRIMARY_METRIC = "recall"
+MODEL_EVALUATION_MIN_ROC_AUC = 0.70
+MODEL_EVALUATION_MIN_PRECISION = 0.40
+MODEL_EVALUATION_MIN_RECALL = 0.60
+MODEL_EVALUATION_THRESHOLDS = [
+    round(x, 2) for x in list(np.arange(0.1, 0.91, 0.05))
+]

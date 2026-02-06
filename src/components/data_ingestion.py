@@ -118,6 +118,7 @@ class DataIngestion:
                 "data_source",
                 "ingested_at_utc",
                 "customerID",
+                "_id"
             ]
 
             df = df.drop(
@@ -127,14 +128,9 @@ class DataIngestion:
             df["TotalCharges"] = pd.to_numeric(
                 df["TotalCharges"], errors="coerce"
             )
-
-            df["SeniorCitizen"] = df["SeniorCitizen"].map(
-                {1: "Yes", 0: "No"}
-            )
-
-            df[self.target_column] = df[self.target_column].map(
-                {"Yes": 1, "No": 0}
-            )
+            
+            df['SeniorCitizen'] = df['SeniorCitizen'].map({1: "Yes", 0: "No"})
+            df[self.target_column] = df[self.target_column].map({"Yes": 1, "No": 0})
 
             df = df.replace({"na": np.nan})
             df = df.drop_duplicates()
@@ -221,6 +217,7 @@ class DataIngestion:
                         "min": float(col.min()),
                         "max": float(col.max()),
                         "mean": float(col.mean()),
+                        "median": float(col.median())
                     }
                 )
 

@@ -35,13 +35,6 @@ from src.utils.main_utils import write_json_file, save_object, read_json_file
 from src.constants.training_pipeline import TARGET_COLUMN
 
 
-NUMERICAL_FEATURES: List[str] = [
-    "tenure",
-    "MonthlyCharges",
-    "TotalCharges",
-]
-
-
 class DataTransformation:
     """
     Production-grade data transformation pipeline.
@@ -111,19 +104,17 @@ class DataTransformation:
         Split features into numerical and categorical groups
         with explicit validation.
         """
-        missing = [c for c in NUMERICAL_FEATURES if c not in X.columns]
-        if missing:
-            raise ValueError(
-                f"Expected numerical features missing: {missing}"
-            )
+        numeric = X.select_dtypes(include=["int", "float"]).columns.tolist()
+        categorical = [c for c in X.columns if c not in numeric]
 
-        numerical_features = list(NUMERICAL_FEATURES)
-        categorical_features = [
-            col for col in X.columns if col not in numerical_features
-        ]
+        if not numeric:
+            raise ValueError("No numeric features detected.")
 
-        return numerical_features, categorical_features
+        if not categorical:
+            raise ValueError("No categorical features detected.")
 
+        return numeric, categorical
+    
     # ============================================================
     # Preprocessor Builders
     # ============================================================

@@ -40,7 +40,6 @@ class ETLconfig:
                 self.etl_dir,
                 training_pipeline.ETL_RAW_DATA_DIR_NAME
             )
-            self.delete_old_data = training_pipeline.ETL_DELETE_OLD_DATA
         except Exception as e:
             raise CustomerChurnException(e, sys)
 
@@ -127,5 +126,55 @@ class DataTransformationConfig:
                 training_pipeline.DATA_TRANSFORMATION_METADATA_FILE_NAME
             )
                     
+        except Exception as e:
+            raise CustomerChurnException(e, sys)
+
+
+class ModelTrainingConfig:
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+        try:
+            self.model_trainer_dir: str = os.path.join(
+                training_pipeline_config.artifact_dir,
+                training_pipeline.MODEL_TRAINING_DIR_NAME
+            )
+            self.trained_models_dir: str = os.path.join(
+                self.model_trainer_dir,
+                training_pipeline.MODEL_TRAINING_TRAINED_MODELS_DIR_NAME
+            )
+            self.metadata_file_path: str = os.path.join(
+                self.model_trainer_dir,
+                training_pipeline.MODEL_TRAINING_METADATA_FILE_NAME
+            )
+            self.models = training_pipeline.MODEL_TRAINING_MODELS_REGISTERY
+            self.models_hyperparameters = training_pipeline.MODEL_TRAINING_MODELS_HYPERPARAMETERS
+            self.primary_metric = training_pipeline.MODEL_TRAINING_PRIMARY_METRIC
+            self.decision_threshold = training_pipeline.MODEL_TRAINING_DECISION_THRESHOLD
+            self.n_iter = training_pipeline.MODEL_TRAINING_N_ITER
+
+        except Exception as e:
+            raise CustomerChurnException(e, sys)
+
+
+class ModelEvaluationConfig:
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+        try:
+            self.model_evaluation_dir: str = os.path.join(
+                training_pipeline_config.artifact_dir,
+                training_pipeline.MODEL_EVALUATION_DIR_NAME
+            )
+            self.report_file_path: str = os.path.join(
+                self.model_evaluation_dir,
+                training_pipeline.MODEL_EVALUATION_REPORT_FILE_NAME
+            )
+            self.metadata_file_path: str = os.path.join(
+                self.model_evaluation_dir,
+                training_pipeline.MODEL_EVALUATION_METADATA_FILE_NAME
+            )
+            self.primary_metric: str = (training_pipeline.MODEL_EVALUATION_PRIMARY_METRIC)
+            self.min_roc_auc: float = (training_pipeline.MODEL_EVALUATION_MIN_ROC_AUC)
+            self.min_precision: float = (training_pipeline.MODEL_EVALUATION_MIN_PRECISION)
+            self.min_recall: float = (training_pipeline.MODEL_EVALUATION_MIN_RECALL)
+            self.thresholds = training_pipeline.MODEL_EVALUATION_THRESHOLDS
+            
         except Exception as e:
             raise CustomerChurnException(e, sys)
