@@ -25,7 +25,7 @@ TARGET_COLUMN: str = "Churn"
 ARTIFACT_DIR: Path = Path("artifacts")
 FINAL_MODEL_PATH: Path = Path("final_model") / "model.pkl"
 OPERATING_THRESHOLD_FILE_PATH: Path = Path("final_model") / "operating_threshold.json"
-TRAINING_BUCKET_NAME: str = "saas-customer-churn-ml"
+TRAINING_BUCKET_NAME: str = "saas-customer-churn-ml-01"
 RANDOM_STATE = 42
 
 # -------------------------------------------------------------------------
