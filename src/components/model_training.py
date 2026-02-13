@@ -3,14 +3,14 @@ Model Training Pipeline.
 
 Responsibilities:
 - Train candidate models using pre-built preprocessors
-- Perform hyperparameter optimization
-- Evaluate best models on validation data
-- Persist trained model pipelines
-- Generate rich, experiment-comparable training metadata
+- Perform bounded hyperparameter optimization
+- Generate cross-validation and validation metrics
+- Persist candidate model artifacts
+- Produce experiment-comparable training metadata
 
-NOTE:
-- Evaluation is performed on the validation split only.
-- Test data is intentionally excluded from this stage.
+IMPORTANT:
+- This pipeline DOES NOT decide deployment.
+- Model approval is handled by Model Evaluation pipeline.
 """
 
 import os
@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import sklearn
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
@@ -60,13 +60,17 @@ class ModelTrainer:
     Production-grade model training pipeline.
 
     Guarantees:
-    - Deterministic CV behavior
-    - Explicit evaluation metrics
-    - End-to-end lineage to data & transformations
-    - Experiment-comparable metadata
+    - Deterministic training
+    - No data leakage
+    - Candidate model generation only
+    - Full lineage to upstream pipelines
     """
 
-    PIPELINE_VERSION = "1.0.0"
+    PIPELINE_VERSION = "1.1.0"
+
+    # ============================================================
+    # INIT
+    # ============================================================
 
     def __init__(
         self,
@@ -81,10 +85,7 @@ class ModelTrainer:
             self.ingestion_artifact = ingestion_artifact
             self.transformation_artifact = transformation_artifact
 
-            os.makedirs(
-                self.config.trained_models_dir,
-                exist_ok=True,
-            )
+            os.makedirs(self.config.trained_models_dir, exist_ok=True)
 
             logging.info(
                 "[MODEL TRAINER INIT] Initialized | "
@@ -95,8 +96,9 @@ class ModelTrainer:
             raise CustomerChurnException(e, sys)
 
     # ============================================================
-    # Helpers
+    # HELPERS
     # ============================================================
+
     @staticmethod
     def _read_csv(file_path: str) -> pd.DataFrame:
         if not os.path.exists(file_path):
@@ -113,69 +115,32 @@ class ModelTrainer:
         )
 
     # ============================================================
-    # Evaluation
+    # VALIDATION METRICS (DIAGNOSTIC ONLY)
     # ============================================================
-    def _evaluate_model(
+
+    def _compute_validation_metrics(
         self,
         model_pipeline: Pipeline,
         X_val: pd.DataFrame,
         y_val: pd.Series,
     ) -> Dict[str, Any]:
-        """
-        Evaluate a trained model on validation data.
-        """
-        if hasattr(model_pipeline, "predict_proba"):
-            y_prob = model_pipeline.predict_proba(X_val)[:, 1]
-        else:
-            y_prob = model_pipeline.decision_function(X_val)
 
+        y_prob = model_pipeline.predict_proba(X_val)[:, 1]
         y_pred = (y_prob >= self.config.decision_threshold).astype(int)
 
         tn, fp, fn, tp = confusion_matrix(y_val, y_pred).ravel()
 
-        metric_fn = {
-            "recall": recall_score,
-            "precision": precision_score,
-            "f1": f1_score,
-            "accuracy": accuracy_score,
-        }[self.config.primary_metric]
-
-        primary_value = metric_fn(y_val, y_pred, zero_division=0)
-
         return {
             "n_samples": int(len(y_val)),
-            "class_distribution": {
-                "0": int((y_val == 0).sum()),
-                "1": int((y_val == 1).sum()),
-            },
             "threshold": self.config.decision_threshold,
-            "primary_metric": {
-                "name": self.config.primary_metric,
-                "value": round(primary_value, 6),
-                "goal": "maximize",
-            },
             "metrics": {
-                "accuracy": round(
-                    accuracy_score(y_val, y_pred), 6
-                ),
-                "precision": round(
-                    precision_score(y_val, y_pred, zero_division=0), 6
-                ),
-                "recall": round(
-                    recall_score(y_val, y_pred, zero_division=0), 6
-                ),
-                "f1": round(
-                    f1_score(y_val, y_pred, zero_division=0), 6
-                ),
-                "roc_auc": round(
-                    roc_auc_score(y_val, y_prob), 6
-                ),
-                "pr_auc": round(
-                    average_precision_score(y_val, y_prob), 6
-                ),
-                "log_loss": round(
-                    log_loss(y_val, y_prob), 6
-                ),
+                "accuracy": round(accuracy_score(y_val, y_pred), 6),
+                "precision": round(precision_score(y_val, y_pred, zero_division=0), 6),
+                "recall": round(recall_score(y_val, y_pred, zero_division=0), 6),
+                "f1": round(f1_score(y_val, y_pred, zero_division=0), 6),
+                "roc_auc": round(roc_auc_score(y_val, y_prob), 6),
+                "pr_auc": round(average_precision_score(y_val, y_prob), 6),
+                "log_loss": round(log_loss(y_val, y_prob), 6),
             },
             "confusion_matrix": {
                 "tn": int(tn),
@@ -186,8 +151,9 @@ class ModelTrainer:
         }
 
     # ============================================================
-    # Training Logic
+    # TRAIN SINGLE MODEL
     # ============================================================
+
     def _train_model(
         self,
         model_name: str,
@@ -199,10 +165,7 @@ class ModelTrainer:
         X_val: pd.DataFrame,
         y_val: pd.Series,
     ) -> Dict[str, Any]:
-        """
-        Train a single model using RandomizedSearchCV
-        and evaluate the best estimator.
-        """
+
         logging.info(f"[MODEL TRAINING] Started | model={model_name}")
 
         pipeline = self._build_pipeline(preprocessor, model)
@@ -223,7 +186,7 @@ class ModelTrainer:
             cv=cv,
             n_jobs=-1,
             random_state=RANDOM_STATE,
-            verbose=2,
+            verbose=0,
             return_train_score=False,
         )
 
@@ -231,28 +194,34 @@ class ModelTrainer:
 
         best_pipeline = search.best_estimator_
 
-        model_path = os.path.join(
+        # ---------- Artifact Directory ----------
+        model_dir = os.path.join(
             self.config.trained_models_dir,
-            f"{model_name}.pkl",
+            model_name,
         )
+        os.makedirs(model_dir, exist_ok=True)
+
+        model_path = os.path.join(model_dir, "model.pkl")
+        metrics_path = os.path.join(model_dir, "validation_metrics.json")
 
         save_object(model_path, best_pipeline)
 
-        evaluation = self._evaluate_model(
+        validation_metrics = self._compute_validation_metrics(
             best_pipeline, X_val, y_val
         )
 
+        write_json_file(metrics_path, validation_metrics)
+
         logging.info(
             "[MODEL TRAINING] Completed | "
-            f"model={model_name} | "
-            f"{self.config.primary_metric}="
-            f"{evaluation['primary_metric']['value']}"
+            f"model={model_name}"
         )
 
         return {
             "model_name": model_name,
             "model_class": model.__class__.__name__,
             "artifact_path": model_path,
+            "validation_metrics_path": metrics_path,
             "best_hyperparameters": search.best_params_,
             "cv": {
                 "strategy": "StratifiedKFold",
@@ -268,21 +237,19 @@ class ModelTrainer:
                     6,
                 ),
             },
-            "evaluation": evaluation,
         }
 
     # ============================================================
-    # Metadata
+    # METADATA
     # ============================================================
+
     def _generate_training_metadata(
         self,
         models_summary: Dict[str, Dict],
         started_at_utc: str,
         completed_at_utc: str,
     ) -> None:
-        """
-        Generate rich, experiment-comparable training metadata.
-        """
+
         ingestion_metadata = read_json_file(
             self.ingestion_artifact.metadata_file_path
         )
@@ -301,17 +268,16 @@ class ModelTrainer:
                 "completed_at_utc": completed_at_utc,
             },
             "input": {
-                "dataset_checksum": ingestion_metadata["split"]["checksums"]["train"],
-                "rows": ingestion_metadata["split"]["counts"]['train'],
-                "features": ingestion_metadata["dataset"]["feature_count"],
+                "dataset_checksum":
+                    ingestion_metadata["split"]["checksums"]["train"],
+                "rows":
+                    ingestion_metadata["split"]["counts"]["train"],
             },
             "preprocessing": {
-                "transformation_fingerprint": transformation_metadata.get(
-                    "transformation_fingerprint"
-                ),
-                "feature_groups": transformation_metadata.get(
-                    "feature_groups"
-                ),
+                "transformation_fingerprint":
+                    transformation_metadata.get(
+                        "transformation_fingerprint"
+                    ),
             },
             "training": {
                 "primary_metric": self.config.primary_metric,
@@ -327,7 +293,8 @@ class ModelTrainer:
                 "pandas_version": pd.__version__,
                 "numpy_version": np.__version__,
             },
-            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "created_at_utc":
+                datetime.now(timezone.utc).isoformat(),
         }
 
         write_json_file(
@@ -336,14 +303,14 @@ class ModelTrainer:
         )
 
     # ============================================================
-    # Pipeline Entry Point
+    # ENTRY POINT
     # ============================================================
+
     def initiate_model_training(self) -> ModelTrainerArtifact:
-        """
-        Execute model training pipeline.
-        """
+
         try:
             logging.info("[MODEL TRAINING PIPELINE] Started")
+
             started_at_utc = datetime.now(timezone.utc).isoformat()
 
             train_df = self._read_csv(
@@ -352,11 +319,6 @@ class ModelTrainer:
             val_df = self._read_csv(
                 self.ingestion_artifact.val_file_path
             )
-
-            if TARGET_COLUMN not in train_df.columns:
-                raise ValueError(
-                    f"Target column '{TARGET_COLUMN}' not found in training data"
-                )
 
             X_train = train_df.drop(columns=[TARGET_COLUMN])
             y_train = train_df[TARGET_COLUMN]
@@ -367,6 +329,7 @@ class ModelTrainer:
             models_summary: Dict[str, Dict] = {}
 
             for model_name, model in self.config.models.items():
+
                 param_grid = self.config.models_hyperparameters.get(
                     model_name, {}
                 )
@@ -395,9 +358,9 @@ class ModelTrainer:
             completed_at_utc = datetime.now(timezone.utc).isoformat()
 
             self._generate_training_metadata(
-                models_summary=models_summary,
-                started_at_utc=started_at_utc,
-                completed_at_utc=completed_at_utc,
+                models_summary,
+                started_at_utc,
+                completed_at_utc,
             )
 
             artifact = ModelTrainerArtifact(
@@ -407,7 +370,7 @@ class ModelTrainer:
 
             logging.info("[MODEL TRAINING PIPELINE] Completed successfully")
             logging.info(artifact)
-
+            
             return artifact
 
         except Exception as e:

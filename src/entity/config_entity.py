@@ -100,7 +100,7 @@ class DataValidationConfig:
                 self.data_validation_dir,
                 training_pipeline.DATA_VALIDATION_REPORT_FILE_NAME
             )
-            self.reference_schema_file_path = training_pipeline.DATA_VALIDATION_REFERENCE_SCHEMA
+            self.reference_schema_file_path = training_pipeline.REFERENCE_SCHEMA
 
         except Exception as e:
             raise CustomerChurnException(e, sys)

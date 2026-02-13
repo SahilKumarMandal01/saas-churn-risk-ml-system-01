@@ -27,6 +27,8 @@ FINAL_MODEL_PATH: Path = Path("final_model") / "model.pkl"
 OPERATING_THRESHOLD_FILE_PATH: Path = Path("final_model") / "operating_threshold.json"
 TRAINING_BUCKET_NAME: str = "saas-customer-churn-ml-01"
 RANDOM_STATE = 42
+REFERENCE_SCHEMA: Path = Path("data_schema") / "schema.yaml"
+
 
 # -------------------------------------------------------------------------
 # ETL Constants
@@ -66,8 +68,6 @@ DATA_INGESTION_MONGODB_URL: str | None = os.getenv("MONGODB_URL")
 
 DATA_VALIDATION_DIR_NAME: str = "03_data_validation"
 DATA_VALIDATION_REPORT_FILE_NAME: str = "report.json"
-
-DATA_VALIDATION_REFERENCE_SCHEMA: Path = Path("data_schema") / "schema.yaml"
 
 
 # -------------------------------------------------------------------------
