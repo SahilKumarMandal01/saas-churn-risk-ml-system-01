@@ -26,7 +26,9 @@ ARTIFACT_DIR: Path = Path("artifacts")
 TRAINING_BUCKET_NAME: str = "saas-customer-churn-ml-01"
 RANDOM_STATE = 42
 REFERENCE_SCHEMA: Path = Path("data_schema") / "schema.yaml"
-PRODUCTION_MODEL_PATH: Path = Path("final_model") / "model.pkl"
+PRODUCTION_MODEL_DIR: Path = Path("production_model")
+PRODUCTION_MODEL_FILE_PATH: Path = Path("production_model") / "model.pkl"
+MODEL_REGISTRY_DIR: Path = Path("model_registry")
 
 
 # -------------------------------------------------------------------------

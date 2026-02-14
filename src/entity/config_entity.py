@@ -173,10 +173,19 @@ class ModelEvaluationConfig:
                 training_pipeline.MODEL_EVALUATION_METADATA_FILE_NAME
             )
 
-            self.production_model_file_path = (training_pipeline.PRODUCTION_MODEL_PATH)
+            self.production_model_file_path = (training_pipeline.PRODUCTION_MODEL_FILE_PATH)
             self.decision_threshold = (training_pipeline.MODEL_EVALUATION_DECISION_THRESHOLD)
             self.recall_tolerance = (training_pipeline.MODEL_EVALUATION_RECALL_TOLERANCE)
             self.min_recall_improvement = (training_pipeline.MODEL_EVALUATION_MIN_IMPROVEMENT)
             
+        except Exception as e:
+            raise CustomerChurnException(e, sys)
+
+
+class ModelRegistryConfig:
+    def __init__(self):
+        try:
+            self.registry_dir = training_pipeline.MODEL_REGISTRY_DIR
+            self.production_model_file_path = training_pipeline.PRODUCTION_MODEL_FILE_PATH
         except Exception as e:
             raise CustomerChurnException(e, sys)

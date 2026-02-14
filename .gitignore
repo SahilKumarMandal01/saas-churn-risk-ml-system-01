@@ -140,3 +140,5 @@ test_mongodb.py
 final_model/
 aws/
 awscliv2.zip
+model_registry/
+production_model/
