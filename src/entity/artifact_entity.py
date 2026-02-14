@@ -106,17 +106,28 @@ class ModelTrainerArtifact:
 
 @dataclass(frozen=True)
 class ModelEvaluationArtifact:
-    report_file_path: str
-    selected_trained_model_file_path: str
-    operating_threshold: float
-    metadata_file_path: str
+    """
+    Artifact produced by Model Evaluation Pipeline.
+
+    Contains:
+    - Selected best candidate model
+    - Evaluation outputs
+    - Approval decision for model registration
+    """
+
+    best_model_name: str
+    best_model_path: str
+    evaluation_report_path: str
+    metadata_path: str
+    approval_status: bool
 
     def __str__(self) -> str:
         return (
             "\nModelEvaluationArtifact(\n"
-            f"  report_file_path                 = {self.report_file_path}\n"
-            f"  selected_trained_model_file_path = {self.selected_trained_model_file_path}\n"
-            f"  operating_threshold              = {self.operating_threshold}\n"
-            f"  metadata_file_path               = {self.metadata_file_path}\n"
+            f"  best_model_name        = {self.best_model_name}\n"
+            f"  best_model_path        = {self.best_model_path}\n"
+            f"  evaluation_report_path = {self.evaluation_report_path}\n"
+            f"  metadata_path          = {self.metadata_path}\n"
+            f"  approval_status        = {self.approval_status}\n"
             ")"
         )

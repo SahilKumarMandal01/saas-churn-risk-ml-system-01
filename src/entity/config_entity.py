@@ -158,23 +158,25 @@ class ModelTrainingConfig:
 class ModelEvaluationConfig:
     def __init__(self, training_pipeline_config: TrainingPipelineConfig):
         try:
-            self.model_evaluation_dir: str = os.path.join(
+            self.evaluation_dir = os.path.join(
                 training_pipeline_config.artifact_dir,
                 training_pipeline.MODEL_EVALUATION_DIR_NAME
             )
-            self.report_file_path: str = os.path.join(
-                self.model_evaluation_dir,
+
+            self.evaluation_report_file_path = os.path.join(
+                self.evaluation_dir,
                 training_pipeline.MODEL_EVALUATION_REPORT_FILE_NAME
             )
-            self.metadata_file_path: str = os.path.join(
-                self.model_evaluation_dir,
+
+            self.metadata_file_path = os.path.join(
+                self.evaluation_dir,
                 training_pipeline.MODEL_EVALUATION_METADATA_FILE_NAME
             )
-            self.primary_metric: str = (training_pipeline.MODEL_EVALUATION_PRIMARY_METRIC)
-            self.min_roc_auc: float = (training_pipeline.MODEL_EVALUATION_MIN_ROC_AUC)
-            self.min_precision: float = (training_pipeline.MODEL_EVALUATION_MIN_PRECISION)
-            self.min_recall: float = (training_pipeline.MODEL_EVALUATION_MIN_RECALL)
-            self.thresholds = training_pipeline.MODEL_EVALUATION_THRESHOLDS
+
+            self.production_model_file_path = (training_pipeline.PRODUCTION_MODEL_PATH)
+            self.decision_threshold = (training_pipeline.MODEL_EVALUATION_DECISION_THRESHOLD)
+            self.recall_tolerance = (training_pipeline.MODEL_EVALUATION_RECALL_TOLERANCE)
+            self.min_recall_improvement = (training_pipeline.MODEL_EVALUATION_MIN_IMPROVEMENT)
             
         except Exception as e:
             raise CustomerChurnException(e, sys)

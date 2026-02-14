@@ -23,11 +23,10 @@ load_dotenv()
 
 TARGET_COLUMN: str = "Churn"
 ARTIFACT_DIR: Path = Path("artifacts")
-FINAL_MODEL_PATH: Path = Path("final_model") / "model.pkl"
-OPERATING_THRESHOLD_FILE_PATH: Path = Path("final_model") / "operating_threshold.json"
 TRAINING_BUCKET_NAME: str = "saas-customer-churn-ml-01"
 RANDOM_STATE = 42
 REFERENCE_SCHEMA: Path = Path("data_schema") / "schema.yaml"
+PRODUCTION_MODEL_PATH: Path = Path("final_model") / "model.pkl"
 
 
 # -------------------------------------------------------------------------
@@ -125,12 +124,8 @@ MODEL_TRAINING_N_ITER = 1
 # -------------------------------------------------------------------------
 
 MODEL_EVALUATION_DIR_NAME: str = "06_model_evaluation"
-MODEL_EVALUATION_REPORT_FILE_NAME: str = "report.json"
-MODEL_EVALUATION_METADATA_FILE_NAME: str = "metadata.json"
-MODEL_EVALUATION_PRIMARY_METRIC = "recall"
-MODEL_EVALUATION_MIN_ROC_AUC = 0.70
-MODEL_EVALUATION_MIN_PRECISION = 0.40
-MODEL_EVALUATION_MIN_RECALL = 0.60
-MODEL_EVALUATION_THRESHOLDS = [
-    round(x, 2) for x in list(np.arange(0.1, 0.91, 0.05))
-]
+MODEL_EVALUATION_REPORT_FILE_NAME: str = "evaluation_report.json"
+MODEL_EVALUATION_METADATA_FILE_NAME: str = "evaluation_metadata.json"
+MODEL_EVALUATION_DECISION_THRESHOLD: float = 0.50
+MODEL_EVALUATION_RECALL_TOLERANCE: float = 0.005
+MODEL_EVALUATION_MIN_IMPROVEMENT: float = 0.01
