@@ -7,6 +7,7 @@ from src.components.data_validation import DataValidation
 from src.components.data_transformation import DataTransformation
 from src.components.model_training import ModelTrainer
 from src.components.model_evaluation import ModelEvaluation
+from src.components.model_registry import ModelRegistry
 
 from src.entity.config_entity import (
     TrainingPipelineConfig,
@@ -16,6 +17,7 @@ from src.entity.config_entity import (
     DataTransformationConfig,
     ModelTrainingConfig,
     ModelEvaluationConfig,
+    ModelRegistryConfig,
 )
 
 from src.entity.artifact_entity import (
@@ -30,28 +32,18 @@ from src.entity.artifact_entity import (
 from src.logging import logging
 from src.exception import CustomerChurnException
 
-from src.cloud.s3_syncer import S3Sync
-from src.constants.training_pipeline import TRAINING_BUCKET_NAME
-
 
 class TrainingPipeline:
     """
-    Orchestrates the end-to-end machine learning training lifecycle.
+    Orchestrates the complete ML training lifecycle including
+    ETL, data preparation, model training, evaluation, and registry update.
 
     Responsibilities
     ----------------
-    1. Sequential orchestration of all ML pipeline stages.
+    1. Sequential execution of pipeline stages.
     2. Managing artifact flow between stages.
-    3. Providing consistent structured logging.
-    4. Synchronizing generated artifacts to cloud storage.
-
-    Design Principles
-    -----------------
-    - Single responsibility per stage
-    - Explicit dependency passing between stages
-    - Deterministic execution order
-    - Fail-fast behavior
-    - Production-grade observability
+    3. Providing structured logging and failure handling.
+    4. Maintaining deterministic execution behavior.
     """
 
     # ============================================================
@@ -59,12 +51,8 @@ class TrainingPipeline:
     # ============================================================
 
     def __init__(self) -> None:
-        """
-        Initialize pipeline configuration and infrastructure dependencies.
-        """
         try:
             self.pipeline_config = TrainingPipelineConfig()
-            self.s3_sync = S3Sync()
 
             logging.info("==================================================")
             logging.info("TRAINING PIPELINE INITIALIZED")
@@ -90,16 +78,11 @@ class TrainingPipeline:
     # ============================================================
 
     def start_etl(self) -> ETLArtifact:
-        """
-        Stage 1: Execute ETL pipeline.
-        """
         try:
             self._log_stage_start("Stage 1: ETL")
 
-            etl_config = ETLconfig(
-                training_pipeline_config=self.pipeline_config
-            )
-            etl = CustomerChurnETL(etl_config=etl_config)
+            etl_config = ETLconfig(self.pipeline_config)
+            etl = CustomerChurnETL(etl_config)
             artifact = etl.initiate_etl()
 
             self._log_stage_end("Stage 1: ETL")
@@ -110,16 +93,11 @@ class TrainingPipeline:
             raise CustomerChurnException(e, sys)
 
     def start_data_ingestion(self) -> DataIngestionArtifact:
-        """
-        Stage 2: Execute data ingestion pipeline.
-        """
         try:
             self._log_stage_start("Stage 2: Data Ingestion")
 
-            ingestion_config = DataIngestionConfig(
-                training_pipeline_config=self.pipeline_config
-            )
-            ingestion = DataIngestion(config=ingestion_config)
+            ingestion_config = DataIngestionConfig(self.pipeline_config)
+            ingestion = DataIngestion(ingestion_config)
             artifact = ingestion.initiate_data_ingestion()
 
             self._log_stage_end("Stage 2: Data Ingestion")
@@ -130,21 +108,16 @@ class TrainingPipeline:
             raise CustomerChurnException(e, sys)
 
     def start_data_validation(
-        self, ingestion_artifact: DataIngestionArtifact
+        self,
+        ingestion_artifact: DataIngestionArtifact,
     ) -> DataValidationArtifact:
-        """
-        Stage 3: Execute data validation pipeline.
-        """
         try:
             self._log_stage_start("Stage 3: Data Validation")
 
-            validation_config = DataValidationConfig(
-                training_pipeline_config=self.pipeline_config
-            )
-
+            validation_config = DataValidationConfig(self.pipeline_config)
             validation = DataValidation(
-                config=validation_config,
-                ingestion_artifact=ingestion_artifact,
+                validation_config,
+                ingestion_artifact,
             )
 
             artifact = validation.initiate_data_validation()
@@ -161,20 +134,17 @@ class TrainingPipeline:
         ingestion_artifact: DataIngestionArtifact,
         validation_artifact: DataValidationArtifact,
     ) -> DataTransformationArtifact:
-        """
-        Stage 4: Execute data transformation pipeline.
-        """
         try:
             self._log_stage_start("Stage 4: Data Transformation")
 
             transformation_config = DataTransformationConfig(
-                training_pipeline_config=self.pipeline_config
+                self.pipeline_config
             )
 
             transformation = DataTransformation(
-                transformation_config=transformation_config,
-                ingestion_artifact=ingestion_artifact,
-                validation_artifact=validation_artifact,
+                transformation_config,
+                ingestion_artifact,
+                validation_artifact,
             )
 
             artifact = transformation.initiate_data_transformation()
@@ -191,20 +161,15 @@ class TrainingPipeline:
         ingestion_artifact: DataIngestionArtifact,
         transformation_artifact: DataTransformationArtifact,
     ) -> ModelTrainerArtifact:
-        """
-        Stage 5: Execute model training pipeline.
-        """
         try:
             self._log_stage_start("Stage 5: Model Training")
 
-            training_config = ModelTrainingConfig(
-                training_pipeline_config=self.pipeline_config
-            )
+            trainer_config = ModelTrainingConfig(self.pipeline_config)
 
             trainer = ModelTrainer(
-                model_trainer_config=training_config,
-                ingestion_artifact=ingestion_artifact,
-                transformation_artifact=transformation_artifact,
+                trainer_config,
+                ingestion_artifact,
+                transformation_artifact,
             )
 
             artifact = trainer.initiate_model_training()
@@ -218,25 +183,20 @@ class TrainingPipeline:
 
     def start_model_evaluation(
         self,
-        training_artifact: ModelTrainerArtifact,
         ingestion_artifact: DataIngestionArtifact,
-        transformation_artifact: DataTransformationArtifact,
+        trainer_artifact: ModelTrainerArtifact,
     ) -> ModelEvaluationArtifact:
-        """
-        Stage 6: Execute model evaluation pipeline.
-        """
         try:
             self._log_stage_start("Stage 6: Model Evaluation")
 
             evaluation_config = ModelEvaluationConfig(
-                training_pipeline_config=self.pipeline_config
+                self.pipeline_config
             )
 
             evaluation = ModelEvaluation(
-                model_evaluation_config=evaluation_config,
-                model_trainer_artifact=training_artifact,
-                ingestion_artifact=ingestion_artifact,
-                transformation_artifact=transformation_artifact,
+                evaluation_config,
+                ingestion_artifact,
+                trainer_artifact,
             )
 
             artifact = evaluation.initiate_model_evaluation()
@@ -248,60 +208,34 @@ class TrainingPipeline:
             logging.exception("Model evaluation stage failed")
             raise CustomerChurnException(e, sys)
 
-    # ============================================================
-    # Cloud Synchronization
-    # ============================================================
-
-    def sync_artifacts_to_s3(self) -> None:
-        """
-        Synchronize generated artifacts and final model to S3.
-
-        Executed only after successful pipeline completion.
-        """
+    def start_model_registry(
+        self,
+        evaluation_artifact: ModelEvaluationArtifact,
+    ):
         try:
-            logging.info("Starting artifact synchronization to S3")
+            self._log_stage_start("Stage 7: Model Registry")
 
-            artifacts_s3_key = (
-                f"artifacts/{self.pipeline_config.timestamp}"
-            )
-            artifacts_s3_url = (
-                f"s3://{TRAINING_BUCKET_NAME}/{artifacts_s3_key}"
-            )
+            registry_config = ModelRegistryConfig()
 
-            self.s3_sync.sync_folder_to_s3(
-                folder=self.pipeline_config.artifact_dir,
-                aws_bucket_url=artifacts_s3_url,
+            registry = ModelRegistry(
+                registry_config,
+                evaluation_artifact,
             )
 
-            logging.info(f"Artifacts synced to: {artifacts_s3_url}")
+            artifact = registry.initiate_model_registry()
 
-            final_model_s3_key = (
-                f"final_model/{self.pipeline_config.timestamp}"
-            )
-            final_model_s3_url = (
-                f"s3://{TRAINING_BUCKET_NAME}/{final_model_s3_key}"
-            )
-
-            self.s3_sync.sync_folder_to_s3(
-                folder="final_model",
-                aws_bucket_url=final_model_s3_url,
-            )
-
-            logging.info(f"Final model synced to: {final_model_s3_url}")
-            logging.info("Artifact synchronization completed successfully\n")
+            self._log_stage_end("Stage 7: Model Registry")
+            return artifact
 
         except Exception as e:
-            logging.exception("Artifact synchronization failed")
+            logging.exception("Model registry stage failed")
             raise CustomerChurnException(e, sys)
 
     # ============================================================
     # Pipeline Execution
     # ============================================================
 
-    def run_pipeline(self) -> ModelEvaluationArtifact:
-        """
-        Execute the full training pipeline sequentially.
-        """
+    def run_pipeline(self):
         try:
             logging.info("==================================================")
             logging.info("TRAINING PIPELINE EXECUTION STARTED")
@@ -312,32 +246,33 @@ class TrainingPipeline:
             ingestion_artifact = self.start_data_ingestion()
 
             validation_artifact = self.start_data_validation(
-                ingestion_artifact=ingestion_artifact
+                ingestion_artifact
             )
 
             transformation_artifact = self.start_data_transformation(
-                ingestion_artifact=ingestion_artifact,
-                validation_artifact=validation_artifact,
+                ingestion_artifact,
+                validation_artifact,
             )
 
-            training_artifact = self.start_model_training(
-                ingestion_artifact=ingestion_artifact,
-                transformation_artifact=transformation_artifact,
+            trainer_artifact = self.start_model_training(
+                ingestion_artifact,
+                transformation_artifact,
             )
 
             evaluation_artifact = self.start_model_evaluation(
-                training_artifact=training_artifact,
-                ingestion_artifact=ingestion_artifact,
-                transformation_artifact=transformation_artifact,
+                ingestion_artifact,
+                trainer_artifact,
             )
 
-            self.sync_artifacts_to_s3()
+            registry_artifact = self.start_model_registry(
+                evaluation_artifact
+            )
 
             logging.info("==================================================")
             logging.info("TRAINING PIPELINE EXECUTION COMPLETED")
             logging.info("==================================================\n")
 
-            return evaluation_artifact
+            return registry_artifact
 
         except Exception as e:
             logging.exception("Training pipeline execution failed")
@@ -350,4 +285,3 @@ if __name__ == "__main__":
         pipeline.run_pipeline()
     except Exception as e:
         logging.exception("Unhandled exception in main execution")
-        print(e)

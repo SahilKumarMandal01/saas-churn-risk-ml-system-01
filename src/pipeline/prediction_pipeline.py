@@ -1,274 +1,296 @@
-"""
-Customer Churn Prediction Pipeline.
-
-Responsibilities:
-- Load final trained model and operating threshold
-- Validate inference input
-- Generate churn probabilities and predictions
-- Persist prediction outputs
-
-NOTE:
-This component is inference-only.
-No training, evaluation, or preprocessing logic is included here.
-"""
-
 import os
 import sys
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional
 
 import pandas as pd
+import pymongo
+import certifi
+from dotenv import load_dotenv
 
 from src.exception import CustomerChurnException
 from src.logging import logging
-from datetime import datetime, timezone
-from src.utils.main_utils import load_object, read_json_file, read_yaml_file
-from src.constants.training_pipeline import (
-    FINAL_MODEL_PATH,
-    OPERATING_THRESHOLD_FILE_PATH,
-    REFERENCE_SCHEMA
+from src.utils.main_utils import (
+    load_object,
+    read_json_file,
+    read_yaml_file,
 )
+from src.constants.training_pipeline import (
+    PRODUCTION_MODEL_FILE_PATH,
+    MODEL_REGISTRY_METADATA_PATH,
+    REFERENCE_SCHEMA,
+)
+
+load_dotenv()
 
 
 class CustomerChurnPredictor:
     """
-    Handles inference for the Customer Churn Prediction system.
+    Production-oriented prediction service for Customer Churn.
+
+    Responsibilities:
+        1. Load the latest approved production model from the registry.
+        2. Validate incoming inference data against the reference schema.
+        3. Generate churn probabilities using the loaded model.
+        4. Log input features, predictions, and metadata for monitoring.
+
+    Attributes:
+        model (sklearn.pipeline.Pipeline): The loaded production model pipeline.
+        registry_metadata (dict): Metadata about the currently deployed model version.
+        mongo_client (pymongo.MongoClient): Connection to the observability database.
     """
 
-    # Identifier columns allowed in inference input
-    IDENTIFIER_COLUMNS = ["CustomerID"]
+    # Columns that identify a record but are not used for prediction
+    IDENTIFIER_COLUMNS = ["customerID"]
 
     def __init__(self) -> None:
+        """
+        Initialize the predictor by loading the model and connecting to the database.
+
+        Raises:
+            CustomerChurnException: If model loading or DB connection fails.
+        """
         try:
-            logging.info("[PREDICTOR INIT] Loading trained model")
-            self.model = load_object(FINAL_MODEL_PATH)
-
-            logging.info("[PREDICTOR INIT] Loading operating threshold")
-            threshold_data = read_json_file(
-                OPERATING_THRESHOLD_FILE_PATH
-            )["threshold"]
-
-            if isinstance(threshold_data, dict):
-                self.threshold = threshold_data.get("operating_threshold")
-            else:
-                self.threshold = threshold_data
-
-            if self.threshold is None:
-                raise ValueError("Operating threshold not found or invalid")
-
-            logging.info(
-                "[PREDICTOR INIT] Predictor initialized | "
-                f"threshold={self.threshold}"
-            )
+            self.model_path = PRODUCTION_MODEL_FILE_PATH
+            self.registry_path = MODEL_REGISTRY_METADATA_PATH
+            
+            self._load_production_model()
+            self._connect_to_database()
 
         except Exception as e:
-            logging.exception("[PREDICTOR INIT] Initialization failed")
-            raise CustomerChurnException(e, sys)
+            raise CustomerChurnException(e, sys) from e
 
-    # ============================================================
-    # Validation
-    # ============================================================
-    @staticmethod
-    def _validate_input(input_df: pd.DataFrame) -> None:
+    def _load_production_model(self) -> None:
+        """Load the model artifact and registry metadata."""
+        logging.info("[PREDICTOR INIT] Loading production model...")
+        
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Production model not found at {self.model_path}")
+
+        self.model = load_object(self.model_path)
+        
+        # Load registry metadata if available, else use defaults
+        if os.path.exists(self.registry_path):
+            self.registry_metadata = read_json_file(self.registry_path)
+        else:
+            logging.warning("[PREDICTOR INIT] Registry metadata not found. Using default.")
+            self.registry_metadata = {"current_production_version": "unknown"}
+
+        logging.info(
+            f"[PREDICTOR INIT] Model loaded successfully | "
+            f"version={self.registry_metadata.get('current_production_version')}"
+        )
+
+    def _connect_to_database(self) -> None:
+        """Establish connection to MongoDB for prediction logging."""
+        self.db_url = os.getenv("MONGODB_URL")
+        self.database_name = os.getenv("ONLINE_DATABASE", "churn_monitoring_db")
+        self.collection_name = os.getenv("ONLINE_COLLECTION", "predictions")
+
+        if not self.db_url:
+            logging.warning("[PREDICTOR INIT] MONGODB_URL not set. Logging will be disabled.")
+            self.mongo_client = None
+            return
+
+        self.mongo_client = pymongo.MongoClient(
+            self.db_url,
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=5000,
+        )
+
+    # ------------------------------------------------------------------
+    # Validation Logic
+    # ------------------------------------------------------------------
+
+    def _validate_input_schema(self, input_df: pd.DataFrame) -> None:
         """
-        Validate inference input against reference schema while allowing
-        identifier columns.
+        Validate inference input against the reference schema.
+        
+        Checks:
+        - Required columns presence.
+        - Forbidden columns (e.g., target).
+        - Data types (numeric vs object).
+        - Null values in non-nullable columns.
+
+        Args:
+            input_df (pd.DataFrame): The inference payload.
+
+        Raises:
+            ValueError: If schema validation fails.
+            TypeError: If input is not a DataFrame.
         """
         try:
-            if input_df is None:
-                raise ValueError("Input DataFrame is None")
-
             if not isinstance(input_df, pd.DataFrame):
                 raise TypeError("Input must be a pandas DataFrame")
 
             if input_df.empty:
                 raise ValueError("Input DataFrame is empty")
 
+            # Load schema definition
             schema = read_yaml_file(REFERENCE_SCHEMA)
+            columns_schema = schema.get("columns", {})
+            target_column = schema.get("dataset", {}).get("target_column")
 
-            dataset_config = schema["dataset"]
-            columns_schema = schema["columns"]
-            dtype_mapping = schema["dtype_mapping"]
-
-            target_column = dataset_config["target_column"]
-
-            identifier_columns = set(
-                CustomerChurnPredictor.IDENTIFIER_COLUMNS
-            )
-
-            # Target column must not be present
-            if target_column in input_df.columns:
+            # 1. Check for Forbidden Columns
+            if target_column and target_column in input_df.columns:
                 raise ValueError(
-                    f"Target column '{target_column}' must not be provided during inference"
+                    f"Target column '{target_column}' is not allowed during inference."
                 )
 
-            schema_columns = set(columns_schema.keys())
-            input_columns = set(input_df.columns)
+            # 2. Check for Missing Required Columns
+            input_cols = set(input_df.columns)
+            identifier_cols = set(self.IDENTIFIER_COLUMNS)
+            feature_cols = input_cols - identifier_cols
 
-            # Remove identifier columns from validation scope
-            feature_columns = input_columns - identifier_columns
-
-            # Missing required feature columns
-            missing_columns = [
+            required_cols = {
                 col for col, meta in columns_schema.items()
                 if meta.get("required", False)
-                and col not in feature_columns
-            ]
+            }
+            
+            missing = required_cols - feature_cols
+            if missing:
+                raise ValueError(f"Missing required columns: {list(missing)}")
 
-            if missing_columns:
-                raise ValueError(
-                    f"Missing required columns: {missing_columns}"
-                )
-
-            # Unknown columns (excluding identifiers)
-            unknown_columns = feature_columns - schema_columns
-
-            if unknown_columns:
-                raise ValueError(
-                    f"Unknown feature columns detected: {list(unknown_columns)}"
-                )
-
-            # Column-level validation
-            for col, meta in columns_schema.items():
-
-                if col not in feature_columns:
+            # 3. Column-Level Checks
+            for col_name, meta in columns_schema.items():
+                if col_name not in input_df.columns:
                     continue
 
-                series = input_df[col]
+                series = input_df[col_name]
 
-                # Nullable enforcement
-                if not meta.get("nullable", True):
-                    if series.isna().any():
-                        raise ValueError(
-                            f"Column '{col}' contains null values"
-                        )
+                # Null check
+                if not meta.get("nullable", True) and series.isna().any():
+                    raise ValueError(f"Column '{col_name}' contains null values.")
 
-                # Dtype validation
-                expected_dtype = meta.get("expected_dtype")
-                if expected_dtype:
-                    allowed_types = dtype_mapping.get(
-                        expected_dtype, []
-                    )
+                # Dtype check (Robust)
+                expected_type = meta.get("expected_dtype")
+                if expected_type == "integer" or expected_type == "floating":
+                    if not pd.api.types.is_numeric_dtype(series):
+                         # Attempt coercion for robust handling
+                        try:
+                            pd.to_numeric(series)
+                        except (ValueError, TypeError):
+                            raise TypeError(f"Column '{col_name}' must be numeric.")
+                
+                elif expected_type == "string":
+                     if not pd.api.types.is_object_dtype(series) and not pd.api.types.is_string_dtype(series):
+                          raise TypeError(f"Column '{col_name}' must be string/object.")
 
-                    if str(series.dtype) not in allowed_types:
-                        raise TypeError(
-                            f"Column '{col}' has dtype {series.dtype}, "
-                            f"expected one of {allowed_types}"
-                        )
-
-                # Allowed categorical values
+                # Allowed Values check
                 if "allowed_values" in meta:
-                    invalid_values = set(series.dropna().unique()) - set(
-                        meta["allowed_values"]
-                    )
-
-                    if invalid_values:
+                    valid_values = set(meta["allowed_values"])
+                    unique_inputs = set(series.dropna().unique())
+                    invalid = unique_inputs - valid_values
+                    if invalid:
                         raise ValueError(
-                            f"Column '{col}' contains invalid values: "
-                            f"{invalid_values}"
-                        )
-
-                # Numeric range checks
-                if "min" in meta:
-                    if (series.dropna() < meta["min"]).any():
-                        raise ValueError(
-                            f"Column '{col}' has values below minimum "
-                            f"{meta['min']}"
-                        )
-
-                if "max" in meta:
-                    if (series.dropna() > meta["max"]).any():
-                        raise ValueError(
-                            f"Column '{col}' has values above maximum "
-                            f"{meta['max']}"
+                            f"Invalid values in '{col_name}': {list(invalid)}. "
+                            f"Allowed: {list(valid_values)}"
                         )
 
         except Exception as e:
-            logging.exception("[INPUT VALIDATION] Validation failed")
-            raise CustomerChurnException(e, sys)
+            # Re-raise as ValueError for clean API error handling
+            raise ValueError(f"Schema Validation Failed: {str(e)}") from e
 
-    # ============================================================
-    # Prediction
-    # ============================================================
+    # ------------------------------------------------------------------
+    # Prediction Logic
+    # ------------------------------------------------------------------
+
     def predict(self, input_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate churn predictions for the input data.
+
+        Args:
+            input_df (pd.DataFrame): The raw customer data.
+
+        Returns:
+            pd.DataFrame: The input data enriched with 'churn_probability', 
+                          'timestamp_utc', and 'model_version'.
+        """
         try:
-            logging.info(
-                "[PREDICTION] Prediction request received | "
-                f"rows={len(input_df)}"
-            )
+            logging.info("[PREDICTION] Received prediction request")
 
-            self._validate_input(input_df)
+            # 1. Validate Input
+            self._validate_input_schema(input_df)
 
-            identifier_df = input_df[
-                [col for col in self.IDENTIFIER_COLUMNS
-                 if col in input_df.columns]
-            ]
-
-            model_input_df = input_df.drop(
-                columns=self.IDENTIFIER_COLUMNS,
+            # 2. Pre-process (Drop non-features)
+            # We explicitly drop identifiers so the model receives exactly what it expects.
+            features_df = input_df.drop(
+                columns=self.IDENTIFIER_COLUMNS, 
                 errors="ignore"
             )
 
-            if not hasattr(self.model, "predict_proba"):
-                raise AttributeError(
-                    "Loaded model does not support probability prediction"
-                )
+            # 3. Generate Prediction
+            # Note: The loaded pipeline handles scaling/encoding internally.
+            churn_probs = self.model.predict_proba(features_df)[:, 1]
 
-            churn_probabilities = self.model.predict_proba(
-                model_input_df
-            )[:, 1]
-
-            churn_predictions = (
-                churn_probabilities >= self.threshold
-            ).astype(int)
-
+            # 4. Format Output
             output_df = input_df.copy()
-            output_df["churn_probability"] = churn_probabilities.round(4)
-            output_df["TimeStamped"] = datetime.now(timezone.utc).isoformat()
-
-            logging.info(
-                "[PREDICTION] Prediction completed | "
-                f"churn_rate={round(churn_predictions.mean(), 4)}"
+            output_df["churn_probability"] = churn_probs.round(4)
+            output_df["timestamp_utc"] = datetime.now(timezone.utc).isoformat()
+            output_df["model_version"] = self.registry_metadata.get(
+                "current_production_version", "unknown"
             )
 
+            # 5. Async/Non-blocking Logging
+            self._log_prediction_event(output_df)
+
+            logging.info("[PREDICTION] Success")
             return output_df
 
         except Exception as e:
-            logging.exception("[PREDICTION] Prediction failed")
-            raise CustomerChurnException(e, sys)
+            logging.exception("[PREDICTION] Inference failed")
+            raise CustomerChurnException(e, sys) from e
 
-    # ============================================================
-    # Persistence
-    # ============================================================
-    @staticmethod
-    def save_predictions(
-        prediction_df: pd.DataFrame,
-        output_file_path: str,
-    ) -> None:
+    def _log_prediction_event(self, output_df: pd.DataFrame) -> None:
+        """
+        Log the prediction result to MongoDB for monitoring.
+        This method is fail-safe; database errors will NOT crash the application.
+        """
+        if self.mongo_client is None:
+            return
+
         try:
-            if prediction_df is None or prediction_df.empty:
-                raise ValueError("Prediction DataFrame is empty or None")
-
-            os.makedirs(
-                os.path.dirname(output_file_path),
-                exist_ok=True,
-            )
-
-            prediction_df.to_csv(output_file_path, index=False)
-
-            logging.info(
-                "[PREDICTION SAVE] Predictions saved | "
-                f"path={output_file_path}, rows={len(prediction_df)}"
-            )
-
+            records = output_df.to_dict(orient="records")
+            collection = self.mongo_client[self.database_name][self.collection_name]
+            collection.insert_many(records, ordered=False)
         except Exception as e:
-            logging.exception("[PREDICTION SAVE] Failed to save predictions")
-            raise CustomerChurnException(e, sys)
+            # We log the error but do NOT raise it. 
+            # Observability failure should not break the user experience.
+            logging.error(f"[PREDICTION LOGGING] Failed to log to MongoDB: {str(e)}")
 
 
-# testing
 if __name__ == "__main__":
-    test_df = pd.read_csv(
-        r"/workspaces/saas-churn-risk-ml-system-01/rough/processed_data_01.csv"
-    )
-    predictor = CustomerChurnPredictor()
-    output = predictor.predict(test_df)
-    print(output)
+    # Smoke Test
+    try:
+        # Create a dummy dataframe matching the schema structure
+        data = {
+            "customerID": ["Test-1"],
+            "gender": ["Male"],
+            "SeniorCitizen": ["No"],
+            "Partner": ["Yes"],
+            "Dependents": ["No"],
+            "tenure": [12],
+            "PhoneService": ["Yes"],
+            "MultipleLines": ["No"],
+            "InternetService": ["DSL"],
+            "OnlineSecurity": ["Yes"],
+            "OnlineBackup": ["No"],
+            "DeviceProtection": ["No"],
+            "TechSupport": ["No"],
+            "StreamingTV": ["No"],
+            "StreamingMovies": ["No"],
+            "Contract": ["Month-to-month"],
+            "PaperlessBilling": ["Yes"],
+            "PaymentMethod": ["Electronic check"],
+            "MonthlyCharges": [70.5],
+            "TotalCharges": [840.5]
+        }
+        test_df = pd.DataFrame(data)
+        
+        predictor = CustomerChurnPredictor()
+        result = predictor.predict(test_df)
+        print("Prediction Result:")
+        print(result[["customerID", "churn_probability", "model_version"]])
+        
+    except Exception as e:
+        print(f"Smoke Test Failed: {e}")
