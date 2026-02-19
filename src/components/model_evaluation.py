@@ -354,6 +354,9 @@ class ModelEvaluation:
             write_json_file(self.config.evaluation_report_file_path, report)
 
             # ---------- Metadata ----------
+            best_model_size_bytes = os.path.getsize(best_result["model_path"])
+            best_model_size_mb = round(best_model_size_bytes / (1024 * 1024), 4)
+
             metadata = {
                 "pipeline_version": self.PIPELINE_VERSION,
                 "decision_threshold": self.config.decision_threshold,
@@ -361,6 +364,7 @@ class ModelEvaluation:
                 "min_recall_improvement": self.config.min_recall_improvement,
                 "best_model": best_model_name,
                 "approved": approved,
+                "model_size_mb": best_model_size_mb,
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
             }
 

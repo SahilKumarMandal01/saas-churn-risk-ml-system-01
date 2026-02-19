@@ -30,6 +30,7 @@ PRODUCTION_MODEL_DIR: Path = Path("production_model")
 PRODUCTION_MODEL_FILE_PATH: Path = Path("production_model") / "model.pkl"
 MODEL_REGISTRY_DIR: Path = Path("model_registry")
 MODEL_REGISTRY_METADATA_PATH: Path = Path("model_registry") / "registry_metadata.json"
+MONITORING_BASELINE_PATH = Path("online") / "monitoring_baseline.json"
 
 
 # -------------------------------------------------------------------------
@@ -77,11 +78,10 @@ DATA_VALIDATION_REPORT_FILE_NAME: str = "report.json"
 # -------------------------------------------------------------------------
 
 DATA_TRANSFORMATION_DIR_NAME: str = "04_data_transformation"
-
 DATA_TRANSFORMATION_LINEAR_PREPROCESSOR_FILE_NAME: str = "lr_preprocessor.pkl"
 DATA_TRANSFORMATION_TREE_PREPROCESSOR_FILE_NAME: str = "tree_preprocessor.pkl"
-
 DATA_TRANSFORMATION_METADATA_FILE_NAME: str = "metadata.json"
+DATA_TRANSFORMATION_MONITORING_BASELINE_FILE_NAME = "monitoring_baseline.json"
 
 
 # -------------------------------------------------------------------------

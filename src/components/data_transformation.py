@@ -4,7 +4,16 @@ Data Transformation Pipeline.
 Responsibilities:
 - Build model-aware preprocessing pipelines
 - Fit preprocessors on training data only (no leakage)
-- Persist fitted preprocessors and rich transformation metadata
+- Persist fitted preprocessors
+- Generate transformation metadata
+- Generate monitoring baseline artifact for drift detection
+
+Design Guarantees:
+- Validation-gated execution
+- Deterministic preprocessing
+- No data leakage
+- Reproducible experiment metadata
+- Monitoring baseline aligned with training distribution
 """
 
 import os
@@ -32,21 +41,26 @@ from src.entity.artifact_entity import (
 from src.exception import CustomerChurnException
 from src.logging import logging
 from src.utils.main_utils import write_json_file, save_object, read_json_file
-from src.constants.training_pipeline import TARGET_COLUMN
+from src.constants.training_pipeline import TARGET_COLUMN, MONITORING_BASELINE_PATH
 
 
 class DataTransformation:
     """
     Production-grade data transformation pipeline.
 
-    Guarantees:
-    - Validation-gated execution
-    - No data leakage
-    - Deterministic preprocessing
-    - Experiment-comparable transformation metadata
+    This component:
+    - Builds preprocessing pipelines for different model types
+    - Fits transformations on training data only
+    - Persists preprocessors
+    - Generates experiment-comparable metadata
+    - Produces monitoring baseline artifact for drift detection
     """
 
-    PIPELINE_VERSION = "1.0.0"
+    PIPELINE_VERSION = "1.1.0"
+
+    # ============================================================
+    # Initialization
+    # ============================================================
 
     def __init__(
         self,
@@ -77,22 +91,23 @@ class DataTransformation:
             )
 
         except Exception as e:
+            logging.exception("[DATA TRANSFORMATION INIT] Failed")
             raise CustomerChurnException(e, sys)
 
     # ============================================================
-    # Helpers
+    # Utility Methods
     # ============================================================
+
     @staticmethod
     def _read_csv(file_path: str) -> pd.DataFrame:
+        """Read CSV safely with existence check."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
         return pd.read_csv(file_path)
 
     @staticmethod
     def _compute_hash(obj: Any) -> str:
-        """
-        Compute a stable SHA-256 hash for JSON-serializable objects.
-        """
+        """Compute stable SHA-256 hash for JSON-serializable object."""
         payload = json.dumps(obj, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
 
@@ -102,7 +117,7 @@ class DataTransformation:
     ) -> Tuple[List[str], List[str]]:
         """
         Split features into numerical and categorical groups
-        with explicit validation.
+        with strict validation.
         """
         numeric = X.select_dtypes(include=["int", "float"]).columns.tolist()
         categorical = [c for c in X.columns if c not in numeric]
@@ -114,16 +129,18 @@ class DataTransformation:
             raise ValueError("No categorical features detected.")
 
         return numeric, categorical
-    
+
     # ============================================================
     # Preprocessor Builders
     # ============================================================
+
     def _build_linear_preprocessor(
         self, num_features: List[str], cat_features: List[str]
     ) -> ColumnTransformer:
         """
-        Preprocessor for linear models.
+        Preprocessor optimized for linear models.
         """
+
         numeric_pipeline = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy="median")),
@@ -156,8 +173,9 @@ class DataTransformation:
         self, num_features: List[str], cat_features: List[str]
     ) -> ColumnTransformer:
         """
-        Preprocessor for tree-based models.
+        Preprocessor optimized for tree-based models.
         """
+
         numeric_pipeline = Pipeline(
             steps=[("imputer", SimpleImputer(strategy="median"))]
         )
@@ -183,15 +201,18 @@ class DataTransformation:
         )
 
     # ============================================================
-    # Metadata
+    # Encoder Metadata Extraction
     # ============================================================
+
     def _extract_encoder_metadata(
         self, preprocessor: ColumnTransformer, cat_features: List[str]
     ) -> Dict[str, Any]:
         """
-        Extract category cardinalities and feature names
-        from a fitted ColumnTransformer.
+        Extract encoder metadata including:
+        - Categorical cardinality
+        - Encoded feature names
         """
+
         metadata: Dict[str, Any] = {
             "categorical_cardinality": {},
             "output_feature_names": [],
@@ -216,6 +237,126 @@ class DataTransformation:
 
         return metadata
 
+    # ============================================================
+    # Monitoring Baseline Generation
+    # ============================================================
+
+    def _compute_numerical_baseline(
+        self, X_train: pd.DataFrame, num_features: List[str]
+    ) -> Dict[str, Any]:
+        """Compute baseline statistics for numeric features."""
+        baseline = {}
+
+        for col in num_features:
+            series = X_train[col]
+
+            baseline[col] = {
+                "mean": float(series.mean()),
+                "std": float(series.std()),
+                "min": float(series.min()),
+                "max": float(series.max()),
+                "quantiles": {
+                    "p10": float(series.quantile(0.10)),
+                    "p25": float(series.quantile(0.25)),
+                    "p50": float(series.quantile(0.50)),
+                    "p75": float(series.quantile(0.75)),
+                    "p90": float(series.quantile(0.90)),
+                },
+                "missing_ratio": float(series.isna().mean()),
+            }
+
+        return baseline
+
+    def _compute_categorical_baseline(
+        self, X_train: pd.DataFrame, cat_features: List[str]
+    ) -> Dict[str, Any]:
+        """Compute baseline distributions for categorical features."""
+        baseline = {}
+
+        for col in cat_features:
+            series = X_train[col]
+            value_counts = (
+                series.value_counts(normalize=True, dropna=False).to_dict()
+            )
+
+            baseline[col] = {
+                "cardinality": int(series.nunique(dropna=True)),
+                "distribution": {
+                    str(k): float(v) for k, v in value_counts.items()
+                },
+                "missing_ratio": float(series.isna().mean()),
+            }
+
+        return baseline
+
+    def _generate_monitoring_baseline(
+        self,
+        X_train: pd.DataFrame,
+        num_features: List[str],
+        cat_features: List[str],
+        linear_preprocessor: ColumnTransformer,
+    ) -> Dict[str, Any]:
+        """
+        Generate monitoring baseline artifact aligned with training distribution.
+        """
+
+        ingestion_metadata = read_json_file(
+            self.ingestion_artifact.metadata_file_path
+        )
+
+        numerical_stats = self._compute_numerical_baseline(
+            X_train, num_features
+        )
+
+        categorical_stats = self._compute_categorical_baseline(
+            X_train, cat_features
+        )
+
+        encoder_metadata = self._extract_encoder_metadata(
+            linear_preprocessor, cat_features
+        )
+
+        return {
+            "pipeline": {
+                "name": "monitoring_baseline",
+                "version": self.PIPELINE_VERSION,
+            },
+            "dataset_reference": {
+                "train_checksum": ingestion_metadata["split"]["checksums"]["train"],
+                "train_rows": len(X_train),
+                "feature_count": len(X_train.columns),
+            },
+            "feature_groups": {
+                "numerical": num_features,
+                "categorical": cat_features,
+            },
+            "numerical_statistics": numerical_stats,
+            "categorical_statistics": categorical_stats,
+            "encoded_feature_mapping": encoder_metadata,
+            "schema_snapshot": {
+                "feature_names": list(X_train.columns),
+                "dtypes": {
+                    col: str(dtype)
+                    for col, dtype in X_train.dtypes.items()
+                },
+            },
+            "drift_thresholds": {
+                "psi_threshold": 0.25,
+                "mean_shift_threshold": 0.15,
+                "prediction_mean_shift_threshold": 0.10,
+                "min_records_required": 200,
+            },
+            "governance": {
+                "validation_passed": self.validation_artifact.validation_status,
+                "transformation_version": self.PIPELINE_VERSION,
+            },
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        }
+
+    # ============================================================
+    # Metadata Generation (Existing)
+    # ============================================================
+
     def _generate_metadata(
         self,
         X_train: pd.DataFrame,
@@ -224,9 +365,7 @@ class DataTransformation:
         linear_preprocessor: ColumnTransformer,
         tree_preprocessor: ColumnTransformer,
     ) -> Dict[str, Any]:
-        """
-        Generate experiment-comparable transformation metadata.
-        """
+
         ingestion_metadata = read_json_file(
             self.ingestion_artifact.metadata_file_path
         )
@@ -241,15 +380,6 @@ class DataTransformation:
         transformation_config = {
             "numerical_features": num_features,
             "categorical_features": cat_features,
-            "linear_pipeline": {
-                "imputer": "median",
-                "scaler": "StandardScaler",
-                "encoder": "OneHotEncoder(drop='first')",
-            },
-            "tree_pipeline": {
-                "imputer": "median",
-                "encoder": "OneHotEncoder",
-            },
         }
 
         return {
@@ -273,13 +403,8 @@ class DataTransformation:
             "transformation_fingerprint": {
                 "config_hash": self._compute_hash(transformation_config),
             },
-            "upstream_validation": {
-                "passed": self.validation_artifact.validation_status,
-                "schema_version": ingestion_metadata["dataset"]["pipeline_version"],
-            },
             "environment": {
                 "python_version": platform.python_version(),
-                "platform": platform.platform(),
                 "sklearn_version": sklearn.__version__,
                 "pandas_version": pd.__version__,
             },
@@ -289,6 +414,7 @@ class DataTransformation:
     # ============================================================
     # Pipeline Entry Point
     # ============================================================
+
     def initiate_data_transformation(
         self,
     ) -> DataTransformationArtifact:
@@ -308,34 +434,28 @@ class DataTransformation:
 
             num_features, cat_features = self._get_feature_groups(X_train)
 
-            logging.info(
-                "[DATA TRANSFORMATION] Training data loaded | "
-                f"rows={len(X_train)}, cols={len(X_train.columns)}"
-            )
-
-            # -------- Linear Preprocessor --------
+            # Fit preprocessors
             linear_preprocessor = self._build_linear_preprocessor(
                 num_features, cat_features
             )
             linear_preprocessor.fit(X_train)
 
-            save_object(
-                self.config.lr_preprocessor_file_path,
-                linear_preprocessor,
-            )
-
-            # -------- Tree Preprocessor --------
             tree_preprocessor = self._build_tree_preprocessor(
                 num_features, cat_features
             )
             tree_preprocessor.fit(X_train)
 
             save_object(
+                self.config.lr_preprocessor_file_path,
+                linear_preprocessor,
+            )
+
+            save_object(
                 self.config.tree_preprocessor_file_path,
                 tree_preprocessor,
             )
 
-            # -------- Metadata --------
+            # Metadata
             metadata = self._generate_metadata(
                 X_train,
                 num_features,
@@ -349,25 +469,34 @@ class DataTransformation:
                 metadata,
             )
 
+            # Monitoring Baseline
+            monitoring_baseline = self._generate_monitoring_baseline(
+                X_train,
+                num_features,
+                cat_features,
+                linear_preprocessor,
+            )
+
+            monitoring_baseline_path = self.config.monitoring_baseline_file_path            
+            write_json_file(
+                monitoring_baseline_path,
+                monitoring_baseline,
+            )
+            write_json_file(MONITORING_BASELINE_PATH, monitoring_baseline)
             artifact = DataTransformationArtifact(
-                tree_preprocessor_file_path=(
-                    self.config.tree_preprocessor_file_path
-                ),
-                linear_preprocessor_file_path=(
-                    self.config.lr_preprocessor_file_path
-                ),
+                tree_preprocessor_file_path=self.config.tree_preprocessor_file_path,
+                linear_preprocessor_file_path=self.config.lr_preprocessor_file_path,
                 metadata_file_path=self.config.metadata_file_path,
+                monitoring_baseline_file_path=self.config.monitoring_baseline_file_path
             )
 
             logging.info(
                 "[DATA TRANSFORMATION PIPELINE] Completed successfully"
             )
             logging.info(artifact)
-            
+
             return artifact
 
         except Exception as e:
-            logging.exception(
-                "[DATA TRANSFORMATION PIPELINE] Failed"
-            )
+            logging.exception("[DATA TRANSFORMATION PIPELINE] Failed")
             raise CustomerChurnException(e, sys)

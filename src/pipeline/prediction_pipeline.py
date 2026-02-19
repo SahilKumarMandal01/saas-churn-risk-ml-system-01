@@ -53,7 +53,8 @@ class CustomerChurnPredictor:
         try:
             self.model_path = PRODUCTION_MODEL_FILE_PATH
             self.registry_path = MODEL_REGISTRY_METADATA_PATH
-            
+            self.reference_schema = read_yaml_file(REFERENCE_SCHEMA)
+
             self._load_production_model()
             self._connect_to_database()
 
@@ -127,7 +128,7 @@ class CustomerChurnPredictor:
                 raise ValueError("Input DataFrame is empty")
 
             # Load schema definition
-            schema = read_yaml_file(REFERENCE_SCHEMA)
+            schema = self.reference_schema
             columns_schema = schema.get("columns", {})
             target_column = schema.get("dataset", {}).get("target_column")
 

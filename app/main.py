@@ -4,6 +4,9 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from fastapi import UploadFile, File, Query
+from fastapi.responses import StreamingResponse
+import io
 
 from app.schemas import CustomerData, PredictionResponse
 from src.pipeline.prediction_pipeline import CustomerChurnPredictor
@@ -105,6 +108,85 @@ async def predict_churn(request: CustomerData):
         # Unexpected server errors
         logging.exception("[API ERROR] Inference failed")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.post("/predict-batch")
+async def predict_batch(
+    file: UploadFile = File(...),
+    download: bool = Query(False, description="Set true to download results as CSV")
+):
+    """
+    Batch inference endpoint for CSV file uploads.
+
+    Flow:
+    1. Accept CSV file.
+    2. Load into pandas DataFrame.
+    3. Run vectorized inference.
+    4. Return JSON response or downloadable CSV.
+    """
+
+    try:
+        predictor = ml_components["predictor"]
+
+        # --------------------------------------------------
+        # 1. Validate File Type
+        # --------------------------------------------------
+        if not file.filename.endswith(".csv"):
+            raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
+        # --------------------------------------------------
+        # 2. Read CSV into DataFrame (In-Memory)
+        # --------------------------------------------------
+        contents = await file.read()
+        input_df = pd.read_csv(io.StringIO(contents.decode("utf-8")))
+
+        if input_df.empty:
+            raise HTTPException(status_code=400, detail="Uploaded CSV is empty")
+
+        # --------------------------------------------------
+        # 3. Run Vectorized Prediction
+        # --------------------------------------------------
+        result_df = predictor.predict(input_df)
+
+        # Add risk level column (vectorized)
+        result_df["risk_level"] = result_df["churn_probability"].apply(
+            lambda x: "High" if x > 0.5 else "Low"
+        )
+
+        # --------------------------------------------------
+        # 4A. Return Downloadable CSV
+        # --------------------------------------------------
+        if download:
+            output_buffer = io.StringIO()
+            result_df.to_csv(output_buffer, index=False)
+            output_buffer.seek(0)
+
+            return StreamingResponse(
+                iter([output_buffer.getvalue()]),
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": "attachment; filename=churn_predictions.csv"
+                },
+            )
+
+        # --------------------------------------------------
+        # 4B. Return JSON Response
+        # --------------------------------------------------
+        return JSONResponse(
+            content={
+                "total_records": len(result_df),
+                "model_version": result_df.iloc[0]["model_version"],
+                "predictions": result_df.to_dict(orient="records")
+            }
+        )
+
+    except ValueError as ve:
+        logging.warning(f"[BATCH API ERROR] Validation failed: {str(ve)}")
+        raise HTTPException(status_code=400, detail=str(ve))
+
+    except Exception as e:
+        logging.exception("[BATCH API ERROR] Inference failed")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
 
 if __name__ == "__main__":
     # For local development

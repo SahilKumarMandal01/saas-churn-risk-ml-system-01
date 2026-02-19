@@ -11,9 +11,14 @@ class TrainingPipelineConfig:
             raw_timestamp = timestamp or datetime.now()
             formatted_timestamp = raw_timestamp.strftime("%m_%d_%Y_%H_%M_%S")
 
-            self.artifact_name: str = training_pipeline.ARTIFACT_DIR
-            self.artifact_dir: str = os.path.join(
-                self.artifact_name,
+            self.training_pipeline_artifact_name: str = training_pipeline.ARTIFACT_DIR/"training_pipeline"
+            self.training_artifact_dir: str = os.path.join(
+                self.training_pipeline_artifact_name,
+                formatted_timestamp
+            )
+            self.monitoring_pipeline_artifact_name: str = training_pipeline.ARTIFACT_DIR/"monitoring_pipeline"
+            self.monitoring_artifact_dir: str = os.path.join(
+                self.monitoring_pipeline_artifact_name,
                 formatted_timestamp
             )
             self.timestamp: str = formatted_timestamp
@@ -29,7 +34,7 @@ class ETLconfig:
     ) -> None:
         try:
             self.etl_dir: str = os.path.join(
-                training_pipeline_config.artifact_dir,
+                training_pipeline_config.training_artifact_dir,
                 training_pipeline.ETL_DIR_NAME
             )
             self.metadata_file_path: str = os.path.join(
@@ -51,7 +56,7 @@ class DataIngestionConfig:
     ) -> None:
         try:
             self.data_ingestion_dir: str = os.path.join(
-                training_pipeline_config.artifact_dir,
+                training_pipeline_config.training_artifact_dir,
                 training_pipeline.DATA_INGESTION_DIR_NAME
             )
             self.train_file_path: str = os.path.join(
@@ -93,7 +98,7 @@ class DataValidationConfig:
     def __init__(self, training_pipeline_config: TrainingPipelineConfig):
         try:
             self.data_validation_dir: str = os.path.join(
-            training_pipeline_config.artifact_dir,
+            training_pipeline_config.training_artifact_dir,
             training_pipeline.DATA_VALIDATION_DIR_NAME,
             )
             self.validation_report_file_path: str = os.path.join(
@@ -110,7 +115,7 @@ class DataTransformationConfig:
     def __init__(self, training_pipeline_config: TrainingPipelineConfig):
         try:
             self.data_transformation_dir: str = os.path.join(
-                training_pipeline_config.artifact_dir,
+                training_pipeline_config.training_artifact_dir,
                 training_pipeline.DATA_TRANSFORMATION_DIR_NAME
             )
             self.lr_preprocessor_file_path: str = os.path.join(
@@ -125,6 +130,10 @@ class DataTransformationConfig:
                 self.data_transformation_dir,
                 training_pipeline.DATA_TRANSFORMATION_METADATA_FILE_NAME
             )
+            self.monitoring_baseline_file_path = os.path.join(
+                self.data_transformation_dir,
+                training_pipeline.DATA_TRANSFORMATION_MONITORING_BASELINE_FILE_NAME
+            )
                     
         except Exception as e:
             raise CustomerChurnException(e, sys)
@@ -134,7 +143,7 @@ class ModelTrainingConfig:
     def __init__(self, training_pipeline_config: TrainingPipelineConfig):
         try:
             self.model_trainer_dir: str = os.path.join(
-                training_pipeline_config.artifact_dir,
+                training_pipeline_config.training_artifact_dir,
                 training_pipeline.MODEL_TRAINING_DIR_NAME
             )
             self.trained_models_dir: str = os.path.join(
@@ -159,7 +168,7 @@ class ModelEvaluationConfig:
     def __init__(self, training_pipeline_config: TrainingPipelineConfig):
         try:
             self.evaluation_dir = os.path.join(
-                training_pipeline_config.artifact_dir,
+                training_pipeline_config.training_artifact_dir,
                 training_pipeline.MODEL_EVALUATION_DIR_NAME
             )
 
@@ -187,5 +196,18 @@ class ModelRegistryConfig:
         try:
             self.registry_dir = training_pipeline.MODEL_REGISTRY_DIR
             self.production_model_file_path = training_pipeline.PRODUCTION_MODEL_FILE_PATH
+        except Exception as e:
+            raise CustomerChurnException(e, sys)
+
+
+class ModelMonitoringConfig:
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+        try:
+            self.monitoring_root_dir: str = training_pipeline_config.monitoring_artifact_dir
+            self.psi_threshold: float = 0.2
+            self.drifted_feature_ratio_threshold: float = 0.3
+            self.monitoring_sample_size: int = 1000
+            self.strict_mode: bool = True
+
         except Exception as e:
             raise CustomerChurnException(e, sys)
