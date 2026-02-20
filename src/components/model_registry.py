@@ -1,27 +1,26 @@
 """
-Model Registry Pipeline.
+Model Registry Pipeline (Production-Grade with Rollback Support)
 
 Responsibilities:
 - Promote approved models from evaluation pipeline
 - Maintain immutable versioned model storage
 - Update production model pointer
-- Maintain registry metadata for lineage and rollback
+- Maintain rich registry metadata for lineage, audit, and rollback
+- Support safe rollback to previous versions
 
-Design Goals:
-- Simple filesystem-based registry
-- Deterministic model promotion
-- Immutable versioning
-- Easy rollback capability
-- Clean separation from training and evaluation
-
-IMPORTANT:
-This pipeline does NOT train or evaluate models.
-It only promotes already approved models.
+Design Guarantees:
+- Only approved models are promoted
+- Registered versions are immutable
+- Production model always points to a valid registered version
+- Full lineage preserved
+- Audit-safe metadata tracking
+- Rollback operations are fully recorded
 """
 
 import os
 import sys
 import shutil
+import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
@@ -36,18 +35,9 @@ class ModelRegistry:
     """
     Production-oriented Model Registry.
 
-    Responsibilities:
-        1. Check approval status from evaluation pipeline
-        2. Create new immutable model version
-        3. Register model artifact
-        4. Update production model pointer
-        5. Maintain registry metadata
-
-    Guarantees:
-        - Only approved models are promoted
-        - Registered versions are immutable
-        - Production model always points to latest approved version
-        - Registry remains auditable and deterministic
+    This component is responsible for safely promoting evaluated models
+    into a versioned registry, updating production pointers, and maintaining
+    metadata for lineage, auditing, and rollback.
     """
 
     PIPELINE_VERSION = "1.0.0"
@@ -59,8 +49,16 @@ class ModelRegistry:
     def __init__(
         self,
         config: ModelRegistryConfig,
-        evaluation_artifact: ModelEvaluationArtifact,
+        evaluation_artifact: Optional[ModelEvaluationArtifact] = None,
     ) -> None:
+        """
+        Initialize ModelRegistry.
+
+        Args:
+            config: Model registry configuration object.
+            evaluation_artifact: Evaluation artifact (required for promotion,
+                                 optional for rollback).
+        """
         try:
             logging.info("[MODEL REGISTRY INIT] Initializing")
 
@@ -79,7 +77,7 @@ class ModelRegistry:
             )
 
             logging.info(
-                "[MODEL REGISTRY INIT] Initialized | "
+                "[MODEL REGISTRY INIT] Completed | "
                 f"pipeline_version={self.PIPELINE_VERSION}"
             )
 
@@ -87,40 +85,78 @@ class ModelRegistry:
             raise CustomerChurnException(e, sys)
 
     # ============================================================
-    # HELPERS
+    # METADATA HELPERS
     # ============================================================
 
     def _load_registry_metadata(self) -> Dict[str, Any]:
         """
-        Load registry metadata if exists, otherwise initialize.
+        Load existing registry metadata or initialize new structure.
         """
         if not os.path.exists(self.registry_metadata_path):
             return {
+                "registry_version": "1.0",
                 "current_production_version": None,
                 "registered_versions": [],
+                "versions_metadata": {},
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
+                "rollback_history": [],
             }
 
         return read_json_file(self.registry_metadata_path)
 
+    def _save_registry_metadata(self, metadata: Dict[str, Any]) -> None:
+        """
+        Persist registry metadata to disk.
+        """
+        write_json_file(self.registry_metadata_path, metadata)
+
     def _get_next_version(self, metadata: Dict[str, Any]) -> str:
         """
-        Determine next model version.
+        Determine next semantic version (v1, v2, v3...).
         """
         versions = metadata.get("registered_versions", [])
 
         if not versions:
             return "v1"
 
-        latest_version = max(int(v[1:]) for v in versions)
-        return f"v{latest_version + 1}"
+        latest = max(int(v[1:]) for v in versions)
+        return f"v{latest + 1}"
+
+    # ============================================================
+    # CHECKSUM
+    # ============================================================
+
+    @staticmethod
+    def _compute_checksum(file_path: str) -> str:
+        """
+        Compute SHA256 checksum of model file.
+        """
+        sha256 = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                sha256.update(chunk)
+        return sha256.hexdigest()
+
+    # ============================================================
+    # MODEL PROMOTION HELPERS
+    # ============================================================
 
     def _register_model(self, version: str) -> str:
         """
         Copy approved model into versioned registry directory.
+
+        Args:
+            version: Version string (e.g., v2)
+
+        Returns:
+            Path to registered model file.
         """
         version_dir = os.path.join(self.config.registry_dir, version)
-        os.makedirs(version_dir, exist_ok=True)
+
+        if os.path.exists(version_dir):
+            raise ValueError(f"Version directory already exists: {version}")
+
+        os.makedirs(version_dir, exist_ok=False)
 
         destination_model_path = os.path.join(version_dir, "model.pkl")
 
@@ -129,9 +165,7 @@ class ModelRegistry:
             destination_model_path,
         )
 
-        logging.info(
-            f"[MODEL REGISTRY] Model registered | version={version}"
-        )
+        logging.info(f"[MODEL REGISTRY] Model registered | version={version}")
 
         return destination_model_path
 
@@ -150,69 +184,77 @@ class ModelRegistry:
         self,
         metadata: Dict[str, Any],
         version: str,
+        version_model_path: str,
     ) -> None:
         """
-        Update registry metadata after successful promotion.
+        Update registry metadata with version-level lineage.
         """
-        metadata.setdefault("registered_versions", []).append(version)
-        metadata["current_production_version"] = version
-        metadata["last_updated_at_utc"] = datetime.now(
-            timezone.utc
-        ).isoformat()
 
-        write_json_file(self.registry_metadata_path, metadata)
+        model_size_bytes = os.path.getsize(version_model_path)
+        model_size_mb = round(model_size_bytes / (1024 * 1024), 4)
+        checksum = self._compute_checksum(version_model_path)
+
+        version_metadata = {
+            "model_name": self.evaluation_artifact.best_model_name,
+            "model_path": version_model_path,
+            "evaluation_report_path":
+                self.evaluation_artifact.evaluation_report_path,
+            "evaluation_metadata_path":
+                self.evaluation_artifact.metadata_path,
+            "approval_status":
+                self.evaluation_artifact.approval_status,
+            "model_size_mb": model_size_mb,
+            "checksum_sha256": checksum,
+            "registered_at_utc":
+                datetime.now(timezone.utc).isoformat(),
+        }
+
+        metadata.setdefault("registered_versions", []).append(version)
+        metadata.setdefault("versions_metadata", {})[version] = version_metadata
+        metadata["current_production_version"] = version
+        metadata["last_updated_at_utc"] = (
+            datetime.now(timezone.utc).isoformat()
+        )
+
+        self._save_registry_metadata(metadata)
 
         logging.info("[MODEL REGISTRY] Registry metadata updated")
 
     # ============================================================
-    # ENTRY POINT
+    # MODEL PROMOTION ENTRY POINT
     # ============================================================
 
     def initiate_model_registry(self) -> Optional[str]:
         """
-        Execute Model Registry pipeline.
+        Execute model promotion pipeline.
 
         Returns:
-            Registered version name if promotion occurs,
-            otherwise None.
+            Version string if promotion successful, otherwise None.
         """
         try:
             logging.info("[MODEL REGISTRY PIPELINE] Started")
 
-            # --------------------------------------------------
+            if not self.evaluation_artifact:
+                raise ValueError(
+                    "Evaluation artifact required for model promotion."
+                )
+
             # Approval Gate
-            # --------------------------------------------------
             if not self.evaluation_artifact.approval_status:
                 logging.info(
-                    "[MODEL REGISTRY] Model not approved. "
-                    "Skipping registration."
+                    "[MODEL REGISTRY] Model not approved. Skipping."
                 )
                 return None
 
-            # --------------------------------------------------
-            # Load Registry State
-            # --------------------------------------------------
             metadata = self._load_registry_metadata()
-
-            # --------------------------------------------------
-            # Determine Version
-            # --------------------------------------------------
             version = self._get_next_version(metadata)
-
-            # --------------------------------------------------
-            # Register Model Version
-            # --------------------------------------------------
             version_model_path = self._register_model(version)
-
-            # --------------------------------------------------
-            # Update Production Model
-            # --------------------------------------------------
             self._update_production_model(version_model_path)
-
-            # --------------------------------------------------
-            # Update Metadata
-            # --------------------------------------------------
-            self._update_registry_metadata(metadata, version)
+            self._update_registry_metadata(
+                metadata,
+                version,
+                version_model_path,
+            )
 
             logging.info(
                 "[MODEL REGISTRY PIPELINE] Completed | "
@@ -223,4 +265,69 @@ class ModelRegistry:
 
         except Exception as e:
             logging.exception("[MODEL REGISTRY PIPELINE] Failed")
+            raise CustomerChurnException(e, sys)
+
+    # ============================================================
+    # ROLLBACK FUNCTIONALITY
+    # ============================================================
+
+    def rollback_to_version(self, version: str) -> str:
+        """
+        Rollback production model to a specific registered version.
+
+        Args:
+            version: Version string (e.g., "v2")
+
+        Returns:
+            Rolled-back version string.
+        """
+        try:
+            logging.info(
+                f"[MODEL REGISTRY] Rollback requested | version={version}"
+            )
+
+            metadata = self._load_registry_metadata()
+
+            if version not in metadata.get("registered_versions", []):
+                raise ValueError(
+                    f"Version '{version}' not found in registry."
+                )
+
+            version_dir = os.path.join(self.config.registry_dir, version)
+            version_model_path = os.path.join(version_dir, "model.pkl")
+
+            if not os.path.exists(version_model_path):
+                raise FileNotFoundError(
+                    f"Model file missing for version: {version}"
+                )
+
+            shutil.copy2(
+                version_model_path,
+                self.config.production_model_file_path,
+            )
+
+            metadata["current_production_version"] = version
+            metadata["last_rollback_at_utc"] = (
+                datetime.now(timezone.utc).isoformat()
+            )
+
+            metadata.setdefault("rollback_history", []).append(
+                {
+                    "rolled_back_to": version,
+                    "timestamp_utc":
+                        datetime.now(timezone.utc).isoformat(),
+                }
+            )
+
+            self._save_registry_metadata(metadata)
+
+            logging.info(
+                "[MODEL REGISTRY] Rollback successful | "
+                f"production_version={version}"
+            )
+
+            return version
+
+        except Exception as e:
+            logging.exception("[MODEL REGISTRY] Rollback failed")
             raise CustomerChurnException(e, sys)
