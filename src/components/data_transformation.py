@@ -483,6 +483,7 @@ class DataTransformation:
                 monitoring_baseline,
             )
             write_json_file(MONITORING_BASELINE_PATH, monitoring_baseline)
+            
             artifact = DataTransformationArtifact(
                 tree_preprocessor_file_path=self.config.tree_preprocessor_file_path,
                 linear_preprocessor_file_path=self.config.lr_preprocessor_file_path,

@@ -1,213 +1,345 @@
-import os, sys
+"""
+Configuration Entities for Customer Churn ML Pipeline.
+
+This module defines all configuration classes used across the
+training, evaluation, registry, and monitoring stages.
+"""
+
+import os
+import sys
 from datetime import datetime
+from typing import Optional
 
 from src.constants import training_pipeline
 from src.exception import CustomerChurnException
 
 
-class TrainingPipelineConfig:
-    def __init__(self, timestamp: datetime | None = None) -> None:
-        try:
-            raw_timestamp = timestamp or datetime.now()
-            formatted_timestamp = raw_timestamp.strftime("%m_%d_%Y_%H_%M_%S")
+# ============================================================
+# Utility
+# ============================================================
 
-            self.training_pipeline_artifact_name: str = training_pipeline.ARTIFACT_DIR/"training_pipeline"
-            self.training_artifact_dir: str = os.path.join(
-                self.training_pipeline_artifact_name,
-                formatted_timestamp
+def _generate_timestamp(timestamp: Optional[datetime] = None) -> str:
+    """Generate formatted timestamp string."""
+    raw_timestamp = timestamp or datetime.now()
+    return raw_timestamp.strftime("%m_%d_%Y_%H_%M_%S")
+
+
+# ============================================================
+# Training Pipeline Root Config
+# ============================================================
+
+class TrainingPipelineConfig:
+    """
+    Root configuration for training pipeline.
+    Responsible for creating base artifact directory.
+    """
+
+    def __init__(self, timestamp: Optional[datetime] = None) -> None:
+        try:
+            formatted_timestamp = _generate_timestamp(timestamp)
+
+            self.artifact_name: str = (
+                training_pipeline.TRAINING_PIPELINE_ARTIFACT_DIR
             )
-            self.monitoring_pipeline_artifact_name: str = training_pipeline.ARTIFACT_DIR/"monitoring_pipeline"
-            self.monitoring_artifact_dir: str = os.path.join(
-                self.monitoring_pipeline_artifact_name,
-                formatted_timestamp
+
+            self.artifact_dir: str = os.path.join(
+                self.artifact_name,
+                formatted_timestamp,
             )
+
             self.timestamp: str = formatted_timestamp
 
         except Exception as e:
-            raise CustomerChurnException(e, sys)
+            raise CustomerChurnException(e, sys) from e
 
+
+# ============================================================
+# ETL Config
+# ============================================================
 
 class ETLconfig:
-    def __init__(
-        self,
-        training_pipeline_config: TrainingPipelineConfig
-    ) -> None:
+    """Configuration for ETL stage."""
+
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig) -> None:
         try:
             self.etl_dir: str = os.path.join(
-                training_pipeline_config.training_artifact_dir,
-                training_pipeline.ETL_DIR_NAME
+                training_pipeline_config.artifact_dir,
+                training_pipeline.ETL_DIR_NAME,
             )
+
             self.metadata_file_path: str = os.path.join(
                 self.etl_dir,
-                training_pipeline.ETL_METADATA_FILE_NAME
+                training_pipeline.ETL_METADATA_FILE_NAME,
             )
+
             self.raw_data_dir: str = os.path.join(
                 self.etl_dir,
-                training_pipeline.ETL_RAW_DATA_DIR_NAME
+                training_pipeline.ETL_RAW_DATA_DIR_NAME,
             )
-        except Exception as e:
-            raise CustomerChurnException(e, sys)
 
+        except Exception as e:
+            raise CustomerChurnException(e, sys) from e
+
+
+# ============================================================
+# Data Ingestion Config
+# ============================================================
 
 class DataIngestionConfig:
-    def __init__(
-        self,
-        training_pipeline_config: TrainingPipelineConfig
-    ) -> None:
+    """Configuration for data ingestion stage."""
+
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig) -> None:
         try:
             self.data_ingestion_dir: str = os.path.join(
-                training_pipeline_config.training_artifact_dir,
-                training_pipeline.DATA_INGESTION_DIR_NAME
+                training_pipeline_config.artifact_dir,
+                training_pipeline.DATA_INGESTION_DIR_NAME,
             )
+
             self.train_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_TRAIN_FILE_NAME
+                training_pipeline.DATA_INGESTION_TRAIN_FILE_NAME,
             )
+
             self.test_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_TEST_FILE_NAME
+                training_pipeline.DATA_INGESTION_TEST_FILE_NAME,
             )
+
             self.val_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_VAL_FILE_NAME
+                training_pipeline.DATA_INGESTION_VAL_FILE_NAME,
             )
+
             self.schema_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_SCHEMA_FILE_NAME
+                training_pipeline.DATA_INGESTION_SCHEMA_FILE_NAME,
             )
+
             self.metadata_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_METADATA_FILE_NAME
+                training_pipeline.DATA_INGESTION_METADATA_FILE_NAME,
             )
+
             self.train_temp_split_ratio: float = (
                 training_pipeline.DATA_INGESTION_TRAIN_TEMP_SPLIT_RATIO
             )
+
             self.test_val_split_ratio: float = (
                 training_pipeline.DATA_INGESTION_TEST_VAL_SPLIT_RATIO
             )
-            self.random_state = training_pipeline.RANDOM_STATE
-            self.database_name = training_pipeline.DATA_INGESTION_DATABASE_NAME
-            self.collection_name = training_pipeline.DATA_INGESTION_COLLECTION_NAME
-            self.database_url = training_pipeline.DATA_INGESTION_MONGODB_URL
-            
+
+            self.random_state: int = training_pipeline.RANDOM_STATE
+            self.database_name: str = (
+                training_pipeline.DATA_INGESTION_DATABASE_NAME
+            )
+            self.collection_name: str = (
+                training_pipeline.DATA_INGESTION_COLLECTION_NAME
+            )
+            self.database_url: str = (
+                training_pipeline.DATA_INGESTION_MONGODB_URL
+            )
+
         except Exception as e:
-            raise CustomerChurnException(e, sys)
-        
+            raise CustomerChurnException(e, sys) from e
+
+
+# ============================================================
+# Data Validation Config
+# ============================================================
 
 class DataValidationConfig:
-    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+    """Configuration for data validation stage."""
+
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig) -> None:
         try:
             self.data_validation_dir: str = os.path.join(
-            training_pipeline_config.training_artifact_dir,
-            training_pipeline.DATA_VALIDATION_DIR_NAME,
+                training_pipeline_config.artifact_dir,
+                training_pipeline.DATA_VALIDATION_DIR_NAME,
             )
+
             self.validation_report_file_path: str = os.path.join(
                 self.data_validation_dir,
-                training_pipeline.DATA_VALIDATION_REPORT_FILE_NAME
+                training_pipeline.DATA_VALIDATION_REPORT_FILE_NAME,
             )
-            self.reference_schema_file_path = training_pipeline.REFERENCE_SCHEMA
+
+            self.reference_schema_file_path: str = (
+                training_pipeline.REFERENCE_SCHEMA
+            )
 
         except Exception as e:
-            raise CustomerChurnException(e, sys)
+            raise CustomerChurnException(e, sys) from e
 
+
+# ============================================================
+# Data Transformation Config
+# ============================================================
 
 class DataTransformationConfig:
-    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+    """Configuration for data transformation stage."""
+
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig) -> None:
         try:
             self.data_transformation_dir: str = os.path.join(
-                training_pipeline_config.training_artifact_dir,
-                training_pipeline.DATA_TRANSFORMATION_DIR_NAME
+                training_pipeline_config.artifact_dir,
+                training_pipeline.DATA_TRANSFORMATION_DIR_NAME,
             )
+
             self.lr_preprocessor_file_path: str = os.path.join(
                 self.data_transformation_dir,
-                training_pipeline.DATA_TRANSFORMATION_LINEAR_PREPROCESSOR_FILE_NAME
-            )  
+                training_pipeline.DATA_TRANSFORMATION_LINEAR_PREPROCESSOR_FILE_NAME,
+            )
+
             self.tree_preprocessor_file_path: str = os.path.join(
                 self.data_transformation_dir,
-                training_pipeline.DATA_TRANSFORMATION_TREE_PREPROCESSOR_FILE_NAME
-            )   
+                training_pipeline.DATA_TRANSFORMATION_TREE_PREPROCESSOR_FILE_NAME,
+            )
+
             self.metadata_file_path: str = os.path.join(
                 self.data_transformation_dir,
-                training_pipeline.DATA_TRANSFORMATION_METADATA_FILE_NAME
+                training_pipeline.DATA_TRANSFORMATION_METADATA_FILE_NAME,
             )
-            self.monitoring_baseline_file_path = os.path.join(
-                self.data_transformation_dir,
-                training_pipeline.DATA_TRANSFORMATION_MONITORING_BASELINE_FILE_NAME
-            )
-                    
-        except Exception as e:
-            raise CustomerChurnException(e, sys)
 
+            self.monitoring_baseline_file_path: str = os.path.join(
+                self.data_transformation_dir,
+                training_pipeline.DATA_TRANSFORMATION_MONITORING_BASELINE_FILE_NAME,
+            )
+
+        except Exception as e:
+            raise CustomerChurnException(e, sys) from e
+
+
+# ============================================================
+# Model Training Config
+# ============================================================
 
 class ModelTrainingConfig:
-    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+    """Configuration for model training stage."""
+
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig) -> None:
         try:
             self.model_trainer_dir: str = os.path.join(
-                training_pipeline_config.training_artifact_dir,
-                training_pipeline.MODEL_TRAINING_DIR_NAME
+                training_pipeline_config.artifact_dir,
+                training_pipeline.MODEL_TRAINING_DIR_NAME,
             )
+
             self.trained_models_dir: str = os.path.join(
                 self.model_trainer_dir,
-                training_pipeline.MODEL_TRAINING_TRAINED_MODELS_DIR_NAME
+                training_pipeline.MODEL_TRAINING_TRAINED_MODELS_DIR_NAME,
             )
+
             self.metadata_file_path: str = os.path.join(
                 self.model_trainer_dir,
-                training_pipeline.MODEL_TRAINING_METADATA_FILE_NAME
+                training_pipeline.MODEL_TRAINING_METADATA_FILE_NAME,
             )
+
             self.models = training_pipeline.MODEL_TRAINING_MODELS_REGISTERY
-            self.models_hyperparameters = training_pipeline.MODEL_TRAINING_MODELS_HYPERPARAMETERS
-            self.primary_metric = training_pipeline.MODEL_TRAINING_PRIMARY_METRIC
-            self.decision_threshold = training_pipeline.MODEL_TRAINING_DECISION_THRESHOLD
-            self.n_iter = training_pipeline.MODEL_TRAINING_N_ITER
+            self.models_hyperparameters = (
+                training_pipeline.MODEL_TRAINING_MODELS_HYPERPARAMETERS
+            )
+
+            self.primary_metric: str = (
+                training_pipeline.MODEL_TRAINING_PRIMARY_METRIC
+            )
+
+            self.decision_threshold: float = (
+                training_pipeline.MODEL_TRAINING_DECISION_THRESHOLD
+            )
+
+            self.n_iter: int = training_pipeline.MODEL_TRAINING_N_ITER
 
         except Exception as e:
-            raise CustomerChurnException(e, sys)
+            raise CustomerChurnException(e, sys) from e
 
+
+# ============================================================
+# Model Evaluation Config
+# ============================================================
 
 class ModelEvaluationConfig:
-    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+    """Configuration for model evaluation stage."""
+
+    def __init__(self, training_pipeline_config: TrainingPipelineConfig) -> None:
         try:
-            self.evaluation_dir = os.path.join(
-                training_pipeline_config.training_artifact_dir,
-                training_pipeline.MODEL_EVALUATION_DIR_NAME
+            self.evaluation_dir: str = os.path.join(
+                training_pipeline_config.artifact_dir,
+                training_pipeline.MODEL_EVALUATION_DIR_NAME,
             )
 
-            self.evaluation_report_file_path = os.path.join(
+            self.evaluation_report_file_path: str = os.path.join(
                 self.evaluation_dir,
-                training_pipeline.MODEL_EVALUATION_REPORT_FILE_NAME
+                training_pipeline.MODEL_EVALUATION_REPORT_FILE_NAME,
             )
 
-            self.metadata_file_path = os.path.join(
+            self.metadata_file_path: str = os.path.join(
                 self.evaluation_dir,
-                training_pipeline.MODEL_EVALUATION_METADATA_FILE_NAME
+                training_pipeline.MODEL_EVALUATION_METADATA_FILE_NAME,
             )
 
-            self.production_model_file_path = (training_pipeline.PRODUCTION_MODEL_FILE_PATH)
-            self.decision_threshold = (training_pipeline.MODEL_EVALUATION_DECISION_THRESHOLD)
-            self.recall_tolerance = (training_pipeline.MODEL_EVALUATION_RECALL_TOLERANCE)
-            self.min_recall_improvement = (training_pipeline.MODEL_EVALUATION_MIN_IMPROVEMENT)
-            
+            self.production_model_file_path: str = (
+                training_pipeline.PRODUCTION_MODEL_FILE_PATH
+            )
+
+            self.decision_threshold: float = (
+                training_pipeline.MODEL_EVALUATION_DECISION_THRESHOLD
+            )
+
+            self.recall_tolerance: float = (
+                training_pipeline.MODEL_EVALUATION_RECALL_TOLERANCE
+            )
+
+            self.min_recall_improvement: float = (
+                training_pipeline.MODEL_EVALUATION_MIN_IMPROVEMENT
+            )
+
         except Exception as e:
-            raise CustomerChurnException(e, sys)
+            raise CustomerChurnException(e, sys) from e
 
+
+# ============================================================
+# Model Registry Config
+# ============================================================
 
 class ModelRegistryConfig:
-    def __init__(self):
-        try:
-            self.registry_dir = training_pipeline.MODEL_REGISTRY_DIR
-            self.production_model_file_path = training_pipeline.PRODUCTION_MODEL_FILE_PATH
-        except Exception as e:
-            raise CustomerChurnException(e, sys)
+    """Configuration for model registry."""
 
+    def __init__(self) -> None:
+        try:
+            self.registry_dir: str = training_pipeline.MODEL_REGISTRY_DIR
+            self.production_model_file_path: str = (
+                training_pipeline.PRODUCTION_MODEL_FILE_PATH
+            )
+
+        except Exception as e:
+            raise CustomerChurnException(e, sys) from e
+
+
+# ============================================================
+# Model Monitoring Config
+# ============================================================
 
 class ModelMonitoringConfig:
-    def __init__(self, training_pipeline_config: TrainingPipelineConfig):
+    """Configuration for monitoring pipeline."""
+
+    def __init__(self, timestamp: Optional[datetime] = None) -> None:
         try:
-            self.monitoring_root_dir: str = training_pipeline_config.monitoring_artifact_dir
+            formatted_timestamp = _generate_timestamp(timestamp)
+
+            self.artifact_name: str = (
+                training_pipeline.MONITORING_PIPELINE_ARTIFACT_DIR
+            )
+
+            self.artifact_dir: str = os.path.join(
+                self.artifact_name,
+                formatted_timestamp,
+            )
+
+            self.timestamp: str = formatted_timestamp
+            self.monitoring_root_dir: str = self.artifact_dir
+
             self.psi_threshold: float = 0.2
             self.drifted_feature_ratio_threshold: float = 0.3
             self.monitoring_sample_size: int = 1000
             self.strict_mode: bool = True
 
         except Exception as e:
-            raise CustomerChurnException(e, sys)
+            raise CustomerChurnException(e, sys) from e

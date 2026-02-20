@@ -32,11 +32,8 @@ import pymongo
 import certifi
 from dotenv import load_dotenv
 
-from src.entity.config_entity import ModelMonitoringConfig, TrainingPipelineConfig
-from src.entity.artifact_entity import (
-    DataTransformationArtifact,
-    ModelMonitoringArtifact,
-)
+from src.entity.config_entity import ModelMonitoringConfig
+from src.entity.artifact_entity import ModelMonitoringArtifact
 from src.exception import CustomerChurnException
 from src.logging import logging
 from src.utils.main_utils import read_json_file, write_json_file
@@ -62,14 +59,16 @@ class ModelMonitoring:
     # INIT
     # ============================================================
 
-    def __init__(
-        self,
-        config: ModelMonitoringConfig,
-    ) -> None:
+    def __init__(self, config: ModelMonitoringConfig) -> None:
         try:
             logging.info("[MODEL MONITORING INIT] Initializing")
 
             self.config = config
+
+            if not os.path.exists(MONITORING_BASELINE_PATH):
+                raise FileNotFoundError(
+                    f"Monitoring baseline not found at {MONITORING_BASELINE_PATH}"
+                )
 
             os.makedirs(self.config.monitoring_root_dir, exist_ok=True)
 
@@ -88,15 +87,7 @@ class ModelMonitoring:
 
     def _load_baseline(self) -> Dict[str, Any]:
         logging.info("[MODEL MONITORING] Loading monitoring baseline")
-
-        baseline_path = "/workspaces/saas-churn-risk-ml-system-01/artifacts/02_19_2026_08_11_37/04_data_transformation/monitoring_baseline.json"
-
-        if not os.path.exists(baseline_path):
-            raise FileNotFoundError(
-                f"Monitoring baseline not found at {baseline_path}"
-            )
-
-        return read_json_file(baseline_path)
+        return read_json_file(MONITORING_BASELINE_PATH)
 
     # ============================================================
     # INFERENCE DATA EXTRACTION
@@ -105,11 +96,6 @@ class ModelMonitoring:
     def _load_inference_data(self) -> pd.DataFrame:
         """
         Extract recent inference logs from MongoDB.
-
-        Strategy:
-            - Load most recent N records (config-governed)
-            - Sort by timestamp
-            - Remove prediction metadata columns
         """
 
         logging.info("[MODEL MONITORING] Fetching inference logs")
@@ -119,9 +105,7 @@ class ModelMonitoring:
         collection_name = os.getenv("ONLINE_COLLECTION", "predictions")
 
         if not db_url:
-            raise EnvironmentError(
-                "MONGODB_URL not set. Monitoring cannot proceed."
-            )
+            raise EnvironmentError("MONGODB_URL not set. Monitoring cannot proceed.")
 
         with pymongo.MongoClient(
             db_url,
@@ -142,16 +126,18 @@ class ModelMonitoring:
         if not records:
             if self.config.strict_mode:
                 raise ValueError("No inference logs available for monitoring")
+
             logging.warning("[MODEL MONITORING] No inference logs found")
             return pd.DataFrame()
 
         df = pd.DataFrame(records)
 
-        # Drop non-feature columns
         drop_cols = [
             "churn_probability",
             "timestamp_utc",
             "model_version",
+            "_id",
+            "customerID",
         ]
         df = df.drop(columns=[c for c in drop_cols if c in df.columns])
 
@@ -167,16 +153,26 @@ class ModelMonitoring:
     # ============================================================
 
     @staticmethod
-    def _calculate_psi(
-        expected: np.ndarray,
-        actual: np.ndarray,
-        bins: int = 10,
-    ) -> float:
+    def _calculate_psi(expected: np.ndarray, actual: np.ndarray, bins: int = 10) -> float:
         """
-        Compute Population Stability Index (PSI).
+        Compute Population Stability Index (PSI) for numeric features.
         """
 
-        breakpoints = np.percentile(expected, np.arange(0, 101, 100 / bins))
+        expected = expected[~np.isnan(expected)]
+        actual = actual[~np.isnan(actual)]
+
+        if len(expected) == 0 or len(actual) == 0:
+            return 0.0
+
+        if np.all(expected == expected[0]):
+            return 0.0
+
+        breakpoints = np.percentile(expected, np.linspace(0, 100, bins + 1))
+        breakpoints = np.unique(breakpoints)
+
+        if len(breakpoints) <= 2:
+            return 0.0
+
         expected_counts = np.histogram(expected, bins=breakpoints)[0]
         actual_counts = np.histogram(actual, bins=breakpoints)[0]
 
@@ -190,7 +186,7 @@ class ModelMonitoring:
             a = max(a, 1e-6)
             psi_values.append((a - e) * math.log(a / e))
 
-        return round(sum(psi_values), 6)
+        return round(float(sum(psi_values)), 6)
 
     # ============================================================
     # DRIFT DETECTION
@@ -207,7 +203,12 @@ class ModelMonitoring:
         drift_report: Dict[str, Any] = {}
         drifted_features = []
 
-        for feature, meta in baseline["features"].items():
+        if live_df.empty:
+            logging.warning(
+                "[MODEL MONITORING] Live dataframe empty — skipping drift detection"
+            )
+
+        for feature, meta in baseline.get("features", {}).items():
 
             if feature not in live_df.columns:
                 continue
@@ -224,20 +225,28 @@ class ModelMonitoring:
                     live_values.to_numpy(),
                 )
             else:
-                baseline_probs = baseline_dist
+                baseline_probs = np.array(baseline_dist)
+
+                categories = meta.get("categories", [])
                 live_probs = (
                     live_values.value_counts(normalize=True)
-                    .reindex(meta["categories"])
+                    .reindex(categories)
                     .fillna(0)
                     .values
                 )
+
+                if len(baseline_probs) != len(live_probs):
+                    logging.warning(
+                        f"[MODEL MONITORING] Category length mismatch for feature: {feature}"
+                    )
+                    continue
 
                 psi = sum(
                     (a - e) * math.log((a + 1e-6) / (e + 1e-6))
                     for e, a in zip(baseline_probs, live_probs)
                 )
 
-                psi = round(psi, 6)
+                psi = round(float(psi), 6)
 
             is_drifted = psi >= self.config.psi_threshold
 
@@ -249,16 +258,17 @@ class ModelMonitoring:
             if is_drifted:
                 drifted_features.append(feature)
 
+        total_features = len(drift_report)
         drift_ratio = (
-            len(drifted_features) / len(drift_report)
-            if drift_report
-            else 0
+            len(drifted_features) / total_features
+            if total_features > 0
+            else 0.0
         )
 
         return {
             "features": drift_report,
             "drifted_features": drifted_features,
-            "drift_ratio": round(drift_ratio, 4),
+            "drift_ratio": round(float(drift_ratio), 4),
         }
 
     # ============================================================
@@ -306,21 +316,14 @@ class ModelMonitoring:
             metadata = {
                 "pipeline_version": self.PIPELINE_VERSION,
                 "psi_threshold": self.config.psi_threshold,
-                "drift_ratio_threshold":
-                    self.config.drifted_feature_ratio_threshold,
-                "monitoring_sample_size":
-                    self.config.monitoring_sample_size,
+                "drift_ratio_threshold": self.config.drifted_feature_ratio_threshold,
+                "monitoring_sample_size": self.config.monitoring_sample_size,
                 "retraining_required": retraining_required,
-                "created_at_utc":
-                    datetime.now(timezone.utc).isoformat(),
+                "created_at_utc": datetime.now(timezone.utc).isoformat(),
             }
 
             write_json_file(metadata_path, metadata)
-
-            write_json_file(
-                flag_path,
-                {"retraining_required": retraining_required},
-            )
+            write_json_file(flag_path, {"retraining_required": retraining_required})
 
             artifact = ModelMonitoringArtifact(
                 artifact_dir=artifact_dir,
@@ -345,8 +348,7 @@ class ModelMonitoring:
 
 if __name__ == "__main__":
     try:
-        pipeline_config = TrainingPipelineConfig()
-        config = ModelMonitoringConfig(pipeline_config)
+        config = ModelMonitoringConfig()
         monitor = ModelMonitoring(config)
         artifact = monitor.initiate_model_monitoring()
         print(artifact)
