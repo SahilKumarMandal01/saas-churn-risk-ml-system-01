@@ -22,8 +22,7 @@ load_dotenv()
 # -------------------------------------------------------------------------
 
 TARGET_COLUMN: str = "Churn"
-TRAINING_PIPELINE_ARTIFACT_DIR: Path = Path("artifacts") / "training_pipeline"
-MONITORING_PIPELINE_ARTIFACT_DIR: Path = Path("artifacts") / "monitoring_pipeline"
+ARTIFACT_DIR: Path = Path("artifacts")
 TRAINING_BUCKET_NAME: str = "saas-customer-churn-ml-01"
 RANDOM_STATE = 42
 REFERENCE_SCHEMA: Path = Path("data_schema") / "schema.yaml"
@@ -32,7 +31,7 @@ PRODUCTION_MODEL_FILE_PATH: Path = Path("production_model") / "model.pkl"
 MODEL_REGISTRY_DIR: Path = Path("model_registry")
 MODEL_REGISTRY_METADATA_PATH: Path = Path("model_registry") / "registry_metadata.json"
 MONITORING_BASELINE_PATH = Path("online") / "monitoring_baseline.json"
-
+LOCK_FILE_PATH = "/tmp/churn_orchestrator.lock"
 
 # -------------------------------------------------------------------------
 # ETL Constants

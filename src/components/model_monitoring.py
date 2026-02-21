@@ -37,7 +37,7 @@ from src.entity.artifact_entity import ModelMonitoringArtifact
 from src.exception import CustomerChurnException
 from src.logging import logging
 from src.utils.main_utils import read_json_file, write_json_file
-from src.constants.training_pipeline import MONITORING_BASELINE_PATH
+from src.constants.pipeline_constants import MONITORING_BASELINE_PATH
 
 load_dotenv()
 

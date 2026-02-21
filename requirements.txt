@@ -8,7 +8,7 @@ uvicorn[standard]==0.40.0
 python-multipart==0.0.9
 pydantic==2.12.5
 pydantic-settings==2.2.1
-pymongo[srv]==4.6.3
+pymongo[srv]==3.12
 certifi==2026.1.4
 python-dotenv==1.2.1
 Kaggle==1.8.3

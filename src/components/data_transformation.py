@@ -41,7 +41,7 @@ from src.entity.artifact_entity import (
 from src.exception import CustomerChurnException
 from src.logging import logging
 from src.utils.main_utils import write_json_file, save_object, read_json_file
-from src.constants.training_pipeline import TARGET_COLUMN, MONITORING_BASELINE_PATH
+from src.constants.pipeline_constants import TARGET_COLUMN, MONITORING_BASELINE_PATH
 
 
 class DataTransformation:

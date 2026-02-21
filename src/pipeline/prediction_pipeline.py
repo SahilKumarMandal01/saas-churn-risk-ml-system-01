@@ -15,7 +15,7 @@ from src.utils.main_utils import (
     read_json_file,
     read_yaml_file,
 )
-from src.constants.training_pipeline import (
+from src.constants.pipeline_constants import (
     PRODUCTION_MODEL_FILE_PATH,
     MODEL_REGISTRY_METADATA_PATH,
     REFERENCE_SCHEMA,

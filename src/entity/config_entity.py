@@ -1,32 +1,11 @@
-"""
-Configuration Entities for Customer Churn ML Pipeline.
-
-This module defines all configuration classes used across the
-training, evaluation, registry, and monitoring stages.
-"""
-
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from src.constants import training_pipeline
+from src.constants import pipeline_constants
 from src.exception import CustomerChurnException
 
-
-# ============================================================
-# Utility
-# ============================================================
-
-def _generate_timestamp(timestamp: Optional[datetime] = None) -> str:
-    """Generate formatted timestamp string."""
-    raw_timestamp = timestamp or datetime.now()
-    return raw_timestamp.strftime("%m_%d_%Y_%H_%M_%S")
-
-
-# ============================================================
-# Training Pipeline Root Config
-# ============================================================
 
 class TrainingPipelineConfig:
     """
@@ -34,20 +13,17 @@ class TrainingPipelineConfig:
     Responsible for creating base artifact directory.
     """
 
-    def __init__(self, timestamp: Optional[datetime] = None) -> None:
+    def __init__(self) -> None:
         try:
-            formatted_timestamp = _generate_timestamp(timestamp)
-
+            self.run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             self.artifact_name: str = (
-                training_pipeline.TRAINING_PIPELINE_ARTIFACT_DIR
+                pipeline_constants.ARTIFACT_DIR / "training_pipeline_runs"
             )
 
             self.artifact_dir: str = os.path.join(
                 self.artifact_name,
-                formatted_timestamp,
+                self.run_id,
             )
-
-            self.timestamp: str = formatted_timestamp
 
         except Exception as e:
             raise CustomerChurnException(e, sys) from e
@@ -64,17 +40,17 @@ class ETLconfig:
         try:
             self.etl_dir: str = os.path.join(
                 training_pipeline_config.artifact_dir,
-                training_pipeline.ETL_DIR_NAME,
+                pipeline_constants.ETL_DIR_NAME,
             )
 
             self.metadata_file_path: str = os.path.join(
                 self.etl_dir,
-                training_pipeline.ETL_METADATA_FILE_NAME,
+                pipeline_constants.ETL_METADATA_FILE_NAME,
             )
 
             self.raw_data_dir: str = os.path.join(
                 self.etl_dir,
-                training_pipeline.ETL_RAW_DATA_DIR_NAME,
+                pipeline_constants.ETL_RAW_DATA_DIR_NAME,
             )
 
         except Exception as e:
@@ -92,51 +68,51 @@ class DataIngestionConfig:
         try:
             self.data_ingestion_dir: str = os.path.join(
                 training_pipeline_config.artifact_dir,
-                training_pipeline.DATA_INGESTION_DIR_NAME,
+                pipeline_constants.DATA_INGESTION_DIR_NAME,
             )
 
             self.train_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_TRAIN_FILE_NAME,
+                pipeline_constants.DATA_INGESTION_TRAIN_FILE_NAME,
             )
 
             self.test_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_TEST_FILE_NAME,
+                pipeline_constants.DATA_INGESTION_TEST_FILE_NAME,
             )
 
             self.val_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_VAL_FILE_NAME,
+                pipeline_constants.DATA_INGESTION_VAL_FILE_NAME,
             )
 
             self.schema_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_SCHEMA_FILE_NAME,
+                pipeline_constants.DATA_INGESTION_SCHEMA_FILE_NAME,
             )
 
             self.metadata_file_path: str = os.path.join(
                 self.data_ingestion_dir,
-                training_pipeline.DATA_INGESTION_METADATA_FILE_NAME,
+                pipeline_constants.DATA_INGESTION_METADATA_FILE_NAME,
             )
 
             self.train_temp_split_ratio: float = (
-                training_pipeline.DATA_INGESTION_TRAIN_TEMP_SPLIT_RATIO
+                pipeline_constants.DATA_INGESTION_TRAIN_TEMP_SPLIT_RATIO
             )
 
             self.test_val_split_ratio: float = (
-                training_pipeline.DATA_INGESTION_TEST_VAL_SPLIT_RATIO
+                pipeline_constants.DATA_INGESTION_TEST_VAL_SPLIT_RATIO
             )
 
-            self.random_state: int = training_pipeline.RANDOM_STATE
+            self.random_state: int = pipeline_constants.RANDOM_STATE
             self.database_name: str = (
-                training_pipeline.DATA_INGESTION_DATABASE_NAME
+                pipeline_constants.DATA_INGESTION_DATABASE_NAME
             )
             self.collection_name: str = (
-                training_pipeline.DATA_INGESTION_COLLECTION_NAME
+                pipeline_constants.DATA_INGESTION_COLLECTION_NAME
             )
             self.database_url: str = (
-                training_pipeline.DATA_INGESTION_MONGODB_URL
+                pipeline_constants.DATA_INGESTION_MONGODB_URL
             )
 
         except Exception as e:
@@ -154,16 +130,16 @@ class DataValidationConfig:
         try:
             self.data_validation_dir: str = os.path.join(
                 training_pipeline_config.artifact_dir,
-                training_pipeline.DATA_VALIDATION_DIR_NAME,
+                pipeline_constants.DATA_VALIDATION_DIR_NAME,
             )
 
             self.validation_report_file_path: str = os.path.join(
                 self.data_validation_dir,
-                training_pipeline.DATA_VALIDATION_REPORT_FILE_NAME,
+                pipeline_constants.DATA_VALIDATION_REPORT_FILE_NAME,
             )
 
             self.reference_schema_file_path: str = (
-                training_pipeline.REFERENCE_SCHEMA
+                pipeline_constants.REFERENCE_SCHEMA
             )
 
         except Exception as e:
@@ -181,27 +157,27 @@ class DataTransformationConfig:
         try:
             self.data_transformation_dir: str = os.path.join(
                 training_pipeline_config.artifact_dir,
-                training_pipeline.DATA_TRANSFORMATION_DIR_NAME,
+                pipeline_constants.DATA_TRANSFORMATION_DIR_NAME,
             )
 
             self.lr_preprocessor_file_path: str = os.path.join(
                 self.data_transformation_dir,
-                training_pipeline.DATA_TRANSFORMATION_LINEAR_PREPROCESSOR_FILE_NAME,
+                pipeline_constants.DATA_TRANSFORMATION_LINEAR_PREPROCESSOR_FILE_NAME,
             )
 
             self.tree_preprocessor_file_path: str = os.path.join(
                 self.data_transformation_dir,
-                training_pipeline.DATA_TRANSFORMATION_TREE_PREPROCESSOR_FILE_NAME,
+                pipeline_constants.DATA_TRANSFORMATION_TREE_PREPROCESSOR_FILE_NAME,
             )
 
             self.metadata_file_path: str = os.path.join(
                 self.data_transformation_dir,
-                training_pipeline.DATA_TRANSFORMATION_METADATA_FILE_NAME,
+                pipeline_constants.DATA_TRANSFORMATION_METADATA_FILE_NAME,
             )
 
             self.monitoring_baseline_file_path: str = os.path.join(
                 self.data_transformation_dir,
-                training_pipeline.DATA_TRANSFORMATION_MONITORING_BASELINE_FILE_NAME,
+                pipeline_constants.DATA_TRANSFORMATION_MONITORING_BASELINE_FILE_NAME,
             )
 
         except Exception as e:
@@ -219,33 +195,33 @@ class ModelTrainingConfig:
         try:
             self.model_trainer_dir: str = os.path.join(
                 training_pipeline_config.artifact_dir,
-                training_pipeline.MODEL_TRAINING_DIR_NAME,
+                pipeline_constants.MODEL_TRAINING_DIR_NAME,
             )
 
             self.trained_models_dir: str = os.path.join(
                 self.model_trainer_dir,
-                training_pipeline.MODEL_TRAINING_TRAINED_MODELS_DIR_NAME,
+                pipeline_constants.MODEL_TRAINING_TRAINED_MODELS_DIR_NAME,
             )
 
             self.metadata_file_path: str = os.path.join(
                 self.model_trainer_dir,
-                training_pipeline.MODEL_TRAINING_METADATA_FILE_NAME,
+                pipeline_constants.MODEL_TRAINING_METADATA_FILE_NAME,
             )
 
-            self.models = training_pipeline.MODEL_TRAINING_MODELS_REGISTERY
+            self.models = pipeline_constants.MODEL_TRAINING_MODELS_REGISTERY
             self.models_hyperparameters = (
-                training_pipeline.MODEL_TRAINING_MODELS_HYPERPARAMETERS
+                pipeline_constants.MODEL_TRAINING_MODELS_HYPERPARAMETERS
             )
 
             self.primary_metric: str = (
-                training_pipeline.MODEL_TRAINING_PRIMARY_METRIC
+                pipeline_constants.MODEL_TRAINING_PRIMARY_METRIC
             )
 
             self.decision_threshold: float = (
-                training_pipeline.MODEL_TRAINING_DECISION_THRESHOLD
+                pipeline_constants.MODEL_TRAINING_DECISION_THRESHOLD
             )
 
-            self.n_iter: int = training_pipeline.MODEL_TRAINING_N_ITER
+            self.n_iter: int = pipeline_constants.MODEL_TRAINING_N_ITER
 
         except Exception as e:
             raise CustomerChurnException(e, sys) from e
@@ -262,33 +238,33 @@ class ModelEvaluationConfig:
         try:
             self.evaluation_dir: str = os.path.join(
                 training_pipeline_config.artifact_dir,
-                training_pipeline.MODEL_EVALUATION_DIR_NAME,
+                pipeline_constants.MODEL_EVALUATION_DIR_NAME,
             )
 
             self.evaluation_report_file_path: str = os.path.join(
                 self.evaluation_dir,
-                training_pipeline.MODEL_EVALUATION_REPORT_FILE_NAME,
+                pipeline_constants.MODEL_EVALUATION_REPORT_FILE_NAME,
             )
 
             self.metadata_file_path: str = os.path.join(
                 self.evaluation_dir,
-                training_pipeline.MODEL_EVALUATION_METADATA_FILE_NAME,
+                pipeline_constants.MODEL_EVALUATION_METADATA_FILE_NAME,
             )
 
             self.production_model_file_path: str = (
-                training_pipeline.PRODUCTION_MODEL_FILE_PATH
+                pipeline_constants.PRODUCTION_MODEL_FILE_PATH
             )
 
             self.decision_threshold: float = (
-                training_pipeline.MODEL_EVALUATION_DECISION_THRESHOLD
+                pipeline_constants.MODEL_EVALUATION_DECISION_THRESHOLD
             )
 
             self.recall_tolerance: float = (
-                training_pipeline.MODEL_EVALUATION_RECALL_TOLERANCE
+                pipeline_constants.MODEL_EVALUATION_RECALL_TOLERANCE
             )
 
             self.min_recall_improvement: float = (
-                training_pipeline.MODEL_EVALUATION_MIN_IMPROVEMENT
+                pipeline_constants.MODEL_EVALUATION_MIN_IMPROVEMENT
             )
 
         except Exception as e:
@@ -304,9 +280,9 @@ class ModelRegistryConfig:
 
     def __init__(self) -> None:
         try:
-            self.registry_dir: str = training_pipeline.MODEL_REGISTRY_DIR
+            self.registry_dir: str = pipeline_constants.MODEL_REGISTRY_DIR
             self.production_model_file_path: str = (
-                training_pipeline.PRODUCTION_MODEL_FILE_PATH
+                pipeline_constants.PRODUCTION_MODEL_FILE_PATH
             )
 
         except Exception as e:
@@ -322,18 +298,16 @@ class ModelMonitoringConfig:
 
     def __init__(self, timestamp: Optional[datetime] = None) -> None:
         try:
-            formatted_timestamp = _generate_timestamp(timestamp)
-
+            self.run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             self.artifact_name: str = (
-                training_pipeline.MONITORING_PIPELINE_ARTIFACT_DIR
+                pipeline_constants.ARTIFACT_DIR / "model_monitoring_runs"
             )
 
             self.artifact_dir: str = os.path.join(
                 self.artifact_name,
-                formatted_timestamp,
+                self.run_id,
             )
 
-            self.timestamp: str = formatted_timestamp
             self.monitoring_root_dir: str = self.artifact_dir
 
             self.psi_threshold: float = 0.2
@@ -343,3 +317,18 @@ class ModelMonitoringConfig:
 
         except Exception as e:
             raise CustomerChurnException(e, sys) from e
+
+
+# ============================================================
+# Orchestrator Config
+# ============================================================
+
+class OrchestratorConfig:
+    def __init__(self) -> None:
+        try:
+            self.run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            self.artifact_dir = pipeline_constants.ARTIFACT_DIR / "orchestrator_runs" / self.run_id
+            self.metadata_path = self.artifact_dir / "run_metadata.json"
+            self.monitoring_snapshot_path = self.artifact_dir / "monitoring_snapshot.json"
+        except Exception as e:
+            raise CustomerChurnException(e, sys)

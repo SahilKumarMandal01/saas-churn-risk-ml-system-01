@@ -44,7 +44,7 @@ from src.entity.artifact_entity import (
     DataTransformationArtifact,
     ModelTrainerArtifact,
 )
-from src.constants.training_pipeline import TARGET_COLUMN, RANDOM_STATE
+from src.constants.pipeline_constants import TARGET_COLUMN, RANDOM_STATE
 from src.exception import CustomerChurnException
 from src.logging import logging
 from src.utils.main_utils import (

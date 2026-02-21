@@ -23,7 +23,7 @@ from src.exception import CustomerChurnException
 from src.logging import logging
 from src.entity.config_entity import DataIngestionConfig, TrainingPipelineConfig
 from src.entity.artifact_entity import DataIngestionArtifact
-from src.constants.training_pipeline import TARGET_COLUMN
+from src.constants.pipeline_constants import TARGET_COLUMN
 from src.utils.main_utils import write_json_file
 
 load_dotenv()
