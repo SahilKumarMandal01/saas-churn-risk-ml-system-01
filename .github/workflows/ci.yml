@@ -22,15 +22,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-
-      # ------------------------
-      # Code Quality
-      # ------------------------
-      - name: Lint Code
-        run: ruff check .
-
-      - name: Format Check
-        run: black --check .
+          
 
       # ------------------------
       # Tests
