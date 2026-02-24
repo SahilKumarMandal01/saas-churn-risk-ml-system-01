@@ -1,0 +1,45 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ------------------------
+      # Code Quality
+      # ------------------------
+      - name: Lint Code
+        run: ruff check .
+
+      - name: Format Check
+        run: black --check .
+
+      # ------------------------
+      # Tests
+      # ------------------------
+      - name: Run Tests
+        run: pytest
+
+      # ------------------------
+      # Docker Build Validation
+      # ------------------------
+      - name: Build Docker Image
+        run: docker build -t churn-api:test .

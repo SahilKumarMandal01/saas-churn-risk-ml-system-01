@@ -14,3 +14,7 @@ python-dotenv==1.2.1
 Kaggle==1.8.3
 pyyaml==6.0.3
 gunicorn==25.1.0
+httpx==0.28.1
+pytest==9.0.2
+ruff==0.15.2
+black==26.1.0
