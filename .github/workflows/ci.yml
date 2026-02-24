@@ -1,16 +1,16 @@
 name: Continuous Integration
 
 on:
-  pull_request:
   push:
     branches: [main]
+  pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -22,16 +22,12 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          
 
-      # ------------------------
-      # Tests
-      # ------------------------
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$PWD" >> $GITHUB_ENV
+
       - name: Run Tests
         run: pytest
 
-      # ------------------------
-      # Docker Build Validation
-      # ------------------------
       - name: Build Docker Image
         run: docker build -t churn-api:test .
